@@ -83,6 +83,9 @@ nav button.on{color:var(--acc)}
 .rules h3:first-child{margin-top:0}
 .rules li{margin-bottom:5px}
 .danger{display:block; width:100%; margin-top:22px; background:none; border:1px solid var(--bad); color:var(--bad); border-radius:12px; padding:12px; font-size:13px; cursor:pointer}
+.lockbar{background:#3a2a10; border:1px solid #7a5a1e; color:#ffce7a; border-radius:12px; padding:10px 12px; font-size:12.5px; margin-bottom:12px; line-height:1.5}
+.lockbar a{color:var(--acc); font-weight:700; text-decoration:underline; cursor:pointer}
+.abtn{display:block; width:100%; margin-top:12px; background:var(--card2); border:1px solid var(--acc); color:var(--acc); border-radius:12px; padding:12px; font-size:13px; font-weight:700; cursor:pointer}
 .share{display:block; width:100%; margin-top:10px; background:var(--acc); border:none; color:#04223f; font-weight:700; border-radius:12px; padding:13px; font-size:14px; cursor:pointer}
 </style>
 </head>
@@ -137,6 +140,7 @@ nav button.on{color:var(--acc)}
       <li>Perdedores disputam o 3º lugar; vencedores fazem a final.</li>
     </ul>
   </div>
+  <div id="admin"></div>
   <button class="danger" onclick="zerar()">🗑️ Zerar todos os resultados</button>
 </section>
 
@@ -213,6 +217,71 @@ async function flush(){
   } finally { flushing = false; }
 }
 function protegido(k){ return pend[k] || (recent[k] && Date.now() - recent[k] < 4000); }
+
+// ---------- modo torneio (trava de digitacao) ----------
+let CFG = {travado: false, pin: ""};
+function podeEditar(){ return !CFG.travado || localStorage.getItem("volei_pin") === String(CFG.pin); }
+function setCfg(c){
+  const nc = (c && typeof c === "object") ? {travado: !!c.travado, pin: c.pin !== undefined ? String(c.pin) : ""} : {travado: false, pin: ""};
+  if (JSON.stringify(nc) !== JSON.stringify(CFG)){ CFG = nc; lockRender(); }
+}
+function lockRender(){
+  const a = document.activeElement;
+  if (!a || a.tagName !== "INPUT") renderJogos();
+  renderFinal(); renderAdmin();
+}
+function renderAdmin(){
+  const el = document.getElementById("admin");
+  if (!el) return;
+  let h = "";
+  if (!CFG.travado){
+    h = `<button class="abtn" onclick="ativarModo()">🔒 Ativar modo torneio (só o mesário digita)</button>
+         <div class="note">Use no dia do torneio: trava a digitação em todos os celulares, menos no do mesário (protegido por PIN). Na ativação dá para zerar os placares de teste.</div>`;
+  } else if (podeEditar()){
+    h = `<div class="note">🔒 <b>Modo torneio ATIVO</b> — este aparelho é o mesário e pode digitar.</div>
+         <button class="abtn" onclick="liberarModo()">🔓 Liberar digitação para todos</button>`;
+  } else {
+    h = `<div class="note">🔒 <b>Modo torneio ATIVO</b> — somente o mesário digita os placares.</div>
+         <button class="abtn" onclick="souMesario()">Sou o mesário (digitar PIN)</button>`;
+  }
+  el.innerHTML = h;
+}
+async function ativarModo(){
+  const pin = prompt("Defina o PIN do mesário (ex.: 4 dígitos). Guarde bem!");
+  if (!pin) return;
+  const zera = confirm("Zerar TODOS os placares também? (recomendado no dia do torneio)\n\nOK = zerar e travar · Cancelar = só travar, mantendo os placares");
+  try {
+    if (zera) await fetch(DBROOT + "placares.json", {method: "PUT", body: "null"});
+    await fetch(DBROOT + "config.json", {method: "PUT", body: JSON.stringify({travado: true, pin: String(pin)})});
+  } catch(e){ alert("Sem conexão — tente novamente."); return; }
+  localStorage.setItem("volei_pin", String(pin));
+  if (zera){ S = {}; pend = {}; save(); renderTabela(); }
+  CFG = {travado: true, pin: String(pin)};
+  lockRender();
+  alert("Modo torneio ativado! Só este aparelho digita agora.");
+}
+async function liberarModo(){
+  if (!confirm("Liberar a digitação para TODOS os celulares?")) return;
+  try { await fetch(DBROOT + "config.json", {method: "PUT", body: JSON.stringify({travado: false, pin: String(CFG.pin || "")})}); } catch(e){ alert("Sem conexão — tente novamente."); return; }
+  CFG = {travado: false, pin: CFG.pin}; lockRender();
+}
+function souMesario(){
+  const p = prompt("PIN do mesário:");
+  if (p === null) return;
+  if (String(p) === String(CFG.pin)){ localStorage.setItem("volei_pin", String(p)); lockRender(); alert("Liberado! Este aparelho agora pode digitar."); }
+  else alert("PIN incorreto.");
+}
+function routeRemote(path, data){
+  if (path === "/"){ setCfg(data ? data.config : null); applyRemote("/", data ? data.placares : null); }
+  else if (path === "/placares") applyRemote("/", data);
+  else if (path.indexOf("/placares/") === 0) applyRemote(path.slice(9), data);
+  else if (path === "/config") setCfg(data);
+  else if (path.indexOf("/config/") === 0){ const k = path.split("/")[2]; const nc = {travado: CFG.travado, pin: CFG.pin}; nc[k] = data; setCfg(nc); }
+}
+function routePatch(path, obj){
+  if (!obj) return;
+  Object.keys(obj).forEach(k => routeRemote(path === "/" ? "/" + k : path + "/" + k, obj[k]));
+}
 setInterval(flush, 8000);
 window.addEventListener("online", flush);
 function rerenderRemote(){
@@ -246,17 +315,17 @@ function patchRemote(path, obj){
   Object.keys(obj).forEach(k => applyRemote(path === "/" ? "/" + k : path + "/" + k, obj[k]));
 }
 function connect(){
-  try { es = new EventSource(DBROOT + "placares.json"); } catch(e){ setSync("off"); return; }
-  es.addEventListener("put", e => { const d = JSON.parse(e.data); live = true; applyRemote(d.path, d.data); setSync(Object.keys(pend).length ? "syncing" : "on"); });
-  es.addEventListener("patch", e => { const d = JSON.parse(e.data); live = true; patchRemote(d.path, d.data); });
+  try { es = new EventSource(DBROOT + ".json"); } catch(e){ setSync("off"); return; }
+  es.addEventListener("put", e => { const d = JSON.parse(e.data); live = true; routeRemote(d.path, d.data); setSync(Object.keys(pend).length ? "syncing" : "on"); });
+  es.addEventListener("patch", e => { const d = JSON.parse(e.data); live = true; routePatch(d.path, d.data); });
   es.onopen = () => { live = true; setSync(Object.keys(pend).length ? "syncing" : "on"); };
   es.onerror = () => { live = false; setSync("off"); };
 }
 async function refreshFromCloud(){
   try {
-    const r = await fetch(DBROOT + "placares.json");
+    const r = await fetch(DBROOT + ".json");
     const d = await r.json();
-    applyRemote("/", d);
+    routeRemote("/", d);
     live = true;
     setSync(Object.keys(pend).length ? "syncing" : "on");
     if (!es || es.readyState === 2) connect();
@@ -265,16 +334,19 @@ async function refreshFromCloud(){
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshFromCloud(); });
 (async () => {
   try {
-    const r = await fetch(DBROOT + "placares.json");
-    const remote = await r.json();
+    const r = await fetch(DBROOT + ".json");
+    const d = await r.json();
+    const remote = d ? d.placares : null;
     if ((!remote || !Object.keys(remote).length) && Object.keys(S).length){
       // primeira conexao: sobe o que ja estava salvo neste aparelho
       await fetch(DBROOT + "placares.json", {method: "PUT", body: JSON.stringify(S)});
     } else if (remote){
       S = remote; save(); renderJogos(); renderTabela(); renderFinal();
     }
+    setCfg(d ? d.config : null);
+    renderAdmin();
     connect();
-  } catch(e){ setSync("off"); }
+  } catch(e){ setSync("off"); renderAdmin(); }
 })();
 
 function sc(g){
@@ -353,6 +425,9 @@ function fmtAvg(e){
 function renderJogos(){
   const el = document.getElementById("sec-jogos");
   let html = "";
+  if (CFG.travado && !podeEditar()){
+    html += `<div class="lockbar">🔒 <b>Modo torneio ativo</b> — somente o mesário pode digitar os placares. Você continua vendo tudo ao vivo. <a onclick="souMesario()">Sou o mesário</a></div>`;
+  }
   let rod = 0;
   GAMES.forEach(g => {
     if (g.rod !== rod){ rod = g.rod; html += `<h2 class="rod">Rodada ${rod}</h2>`; }
@@ -367,15 +442,16 @@ function renderJogos(){
       <div class="gtop"><span>Jogo ${g.n} · Chave ${g.ch}</span><span>${g.wo ? "WO — BRASILIS desistiu" : (s ? "✅ encerrado" : "aguardando")}</span></div>
       <div class="grow">
         <div class="tname${w === g.t1 ? " win" : ""}">${g.t1}</div>
-        <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${g.wo ? 21 : v[0]}" ${g.wo ? "disabled" : ""} oninput="setScore('${g.id}',0,this.value)">
+        <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${g.wo ? 21 : v[0]}" ${(g.wo || !podeEditar()) ? "disabled" : ""} oninput="setScore('${g.id}',0,this.value)">
         <div class="x">✕</div>
-        <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${g.wo ? 0 : v[1]}" ${g.wo ? "disabled" : ""} oninput="setScore('${g.id}',1,this.value)">
+        <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${g.wo ? 0 : v[1]}" ${(g.wo || !podeEditar()) ? "disabled" : ""} oninput="setScore('${g.id}',1,this.value)">
         <div class="tname right${w === g.t2 ? " win" : ""}">${g.t2}</div>
       </div>${warn}${emp}</div>`;
   });
   el.innerHTML = html;
 }
 function setScore(id, lado, val){
+  if (!podeEditar()) return;
   if (!S[id]) S[id] = ["",""];
   S[id][lado] = val;
   save();
@@ -427,13 +503,14 @@ function kCard(id, titulo, t1, t2, def1, def2){
   return `<div class="kcard"><div class="ktitle">${titulo}</div>
     <div class="grow">
       <div class="tname${w === n1 && real ? " win" : ""}">${n1}</div>
-      <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${v[0]}" ${real ? "" : "disabled"} oninput="setK('${id}',0,this.value)">
+      <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${v[0]}" ${(real && podeEditar()) ? "" : "disabled"} oninput="setK('${id}',0,this.value)">
       <div class="x">✕</div>
-      <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${v[1]}" ${real ? "" : "disabled"} oninput="setK('${id}',1,this.value)">
+      <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${v[1]}" ${(real && podeEditar()) ? "" : "disabled"} oninput="setK('${id}',1,this.value)">
       <div class="tname right${w === n2 && real ? " win" : ""}">${n2}</div>
     </div></div>`;
 }
 function setK(id, lado, val){
+  if (!podeEditar()) return;
   if (!S[id]) S[id] = ["",""];
   S[id][lado] = val;
   save();
@@ -565,6 +642,7 @@ function tab(t){
   window.scrollTo(0,0);
 }
 async function zerar(){
+  if (!podeEditar()){ alert("Modo torneio ativo — somente o mesário pode zerar."); return; }
   if (!confirm("Apagar TODOS os placares digitados? (os WO continuam)\n\nIsso apaga para TODOS os celulares conectados.")) return;
   try {
     await fetch(DBROOT + "placares.json", {method: "PUT", body: "null"});
