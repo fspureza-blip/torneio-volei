@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#101c2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Torneio de Vôlei 🏐</title>
+<style>
+:root{
+  --bg:#0c1626; --card:#16243a; --card2:#1d2f4b; --line:#27405f;
+  --txt:#e8eef7; --mut:#8fa3bd; --acc:#36a2ff; --ok:#37d67a; --warn:#ffb454; --bad:#ff6b6b;
+  --gold:#ffd700;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+body{margin:0; font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif; background:var(--bg); color:var(--txt); padding-bottom:84px}
+header{position:sticky; top:0; z-index:10; background:linear-gradient(135deg,#101c2e,#16365c); padding:14px 16px 10px; box-shadow:0 2px 12px rgba(0,0,0,.45)}
+header h1{margin:0; font-size:19px}
+header p{margin:2px 0 0; font-size:12px; color:var(--mut)}
+.wrap{padding:12px; max-width:560px; margin:0 auto}
+.sec{display:none}
+.sec.on{display:block}
+h2.rod{font-size:13px; color:var(--acc); text-transform:uppercase; letter-spacing:.08em; margin:18px 4px 8px}
+.game{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:10px 12px; margin-bottom:8px}
+.game.done{border-color:#2c5c3f}
+.game.wo{opacity:.62}
+.gtop{display:flex; justify-content:space-between; font-size:11px; color:var(--mut); margin-bottom:6px}
+.grow{display:grid; grid-template-columns:1fr 56px 14px 56px 1fr; align-items:center; gap:6px}
+.tname{font-size:13px; font-weight:600; line-height:1.15}
+.tname.right{text-align:right}
+.tname.win{color:var(--ok)}
+input.score{width:56px; height:44px; font-size:19px; font-weight:700; text-align:center; color:var(--txt); background:var(--card2); border:1.5px solid var(--line); border-radius:10px; outline:none}
+input.score:focus{border-color:var(--acc)}
+input.score:disabled{background:transparent; border-style:dashed}
+.x{text-align:center; color:var(--mut); font-size:12px}
+.alert{font-size:11px; color:var(--warn); margin-top:6px}
+table{width:100%; border-collapse:collapse; background:var(--card); border-radius:14px; overflow:hidden; margin-bottom:6px}
+th{background:#11335c; font-size:11px; padding:8px 4px; color:#bcd6f2; text-transform:uppercase}
+td{padding:9px 4px; font-size:13px; text-align:center; border-top:1px solid var(--line)}
+td.tm{text-align:left; font-weight:600; font-size:12.5px}
+tr.q td{background:rgba(54,162,255,.10)}
+.pos{font-weight:800; color:var(--acc)}
+.chv{margin:18px 4px 8px; font-size:14px; font-weight:800; letter-spacing:.05em}
+.chv.b{color:var(--warn)}
+.chv.a{color:var(--acc)}
+.badge{display:inline-block; font-size:9px; padding:2px 6px; border-radius:8px; margin-left:5px; vertical-align:middle}
+.badge.cd{background:#2a4d2f; color:#7be495}
+.badge.so{background:#5c3a14; color:#ffb454}
+.note{font-size:11.5px; color:var(--mut); margin:8px 4px 0; line-height:1.5}
+.kcard{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:10px}
+.ktitle{font-size:12px; color:var(--acc); font-weight:700; text-transform:uppercase; margin-bottom:8px}
+.champ{background:linear-gradient(135deg,#3a2f00,#6b5500); border:1px solid var(--gold); border-radius:14px; padding:16px; text-align:center; margin-top:14px}
+.champ .nm{font-size:21px; font-weight:800; color:var(--gold); margin-top:4px}
+.bronze{text-align:center; margin-top:10px; color:var(--mut); font-size:14px}
+.bronze b{color:#d9a06b}
+nav{position:fixed; bottom:0; left:0; right:0; display:flex; background:#0e1a2c; border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1; background:none; border:none; color:var(--mut); font-size:11px; padding:9px 0 7px; cursor:pointer}
+nav button .ic{display:block; font-size:21px; margin-bottom:2px}
+nav button.on{color:var(--acc)}
+.rules{background:var(--card); border-radius:14px; padding:14px 16px; font-size:13.5px; line-height:1.65}
+.rules h3{color:var(--acc); font-size:13px; text-transform:uppercase; margin:16px 0 6px}
+.rules h3:first-child{margin-top:0}
+.rules li{margin-bottom:5px}
+.danger{display:block; width:100%; margin-top:22px; background:none; border:1px solid var(--bad); color:var(--bad); border-radius:12px; padding:12px; font-size:13px; cursor:pointer}
+.share{display:block; width:100%; margin-top:10px; background:var(--acc); border:none; color:#04223f; font-weight:700; border-radius:12px; padding:13px; font-size:14px; cursor:pointer}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏐 Torneio de Vôlei — Masculino</h1>
+  <p>Set único até 21 · sem vantagem · vitória = 3 pts</p>
+</header>
+<div class="wrap">
+
+<section id="sec-jogos" class="sec on"></section>
+
+<section id="sec-tabela" class="sec">
+  <div id="tabela"></div>
+  <div class="note">Ordenação oficial: <b>vitórias → confronto direto → average (PP÷PC) → saldo (PP−PC) → sorteio</b>.
+  <span class="badge cd">CD</span> = posição decidida pelo confronto direto.
+  <span class="badge so">SORTEIO</span> = empate total, precisa de sorteio.</div>
+  <button class="share" onclick="compartilhar()">📤 Compartilhar classificação</button>
+</section>
+
+<section id="sec-final" class="sec" ></section>
+
+<section id="sec-regras" class="sec">
+  <div class="rules">
+    <h3>Como usar</h3>
+    <ul>
+      <li>Na aba <b>Jogos</b>, digite o placar do set de cada equipe. Tudo calcula sozinho.</li>
+      <li>Jogo em <b>set único até 21 pontos, sem vantagem</b> (não precisa de 2 de diferença) — o vencedor sempre faz 21.</li>
+      <li>Os dados ficam salvos no seu celular automaticamente.</li>
+    </ul>
+    <h3>Pontuação</h3>
+    <ul>
+      <li>Vitória = <b>3 pontos</b> · Derrota = 0</li>
+      <li><b>WO:</b> o BRASILIS VOLEIBOL desistiu. Os jogos contra ele (BYE) já estão lançados como vitória por 21×0 e 3 pontos.</li>
+    </ul>
+    <h3>Critérios de desempate (em ordem)</h3>
+    <ul>
+      <li><b>1º Vitórias</b> — quem venceu mais jogos.</li>
+      <li><b>2º Confronto direto</b> — entre 2 empatados, quem venceu o jogo entre eles (o app aplica sozinho).</li>
+      <li><b>3º Average</b> — pontos feitos ÷ sofridos. Ex.: 63÷55 = 1,145. Maior é melhor. "∞" = ainda não sofreu pontos.</li>
+      <li><b>4º Saldo</b> — pontos feitos − sofridos. Ex.: 63−55 = +8.</li>
+      <li><b>5º Sorteio</b> — o app avisa quando for o caso.</li>
+    </ul>
+    <h3>Fase final</h3>
+    <ul>
+      <li>Semifinais: 1º A × 2º B e 1º B × 2º A.</li>
+      <li>Perdedores disputam o 3º lugar; vencedores fazem a final.</li>
+    </ul>
+  </div>
+  <button class="danger" onclick="zerar()">🗑️ Zerar todos os resultados</button>
+</section>
+
+</div>
+<nav>
+  <button id="nav-jogos" class="on" onclick="tab('jogos')"><span class="ic">📋</span>Jogos</button>
+  <button id="nav-tabela" onclick="tab('tabela')"><span class="ic">🏆</span>Tabela</button>
+  <button id="nav-final" onclick="tab('final')"><span class="ic">🥇</span>Final</button>
+  <button id="nav-regras" onclick="tab('regras')"><span class="ic">📖</span>Regras</button>
+</nav>
+
+<script>
+const TEAMS_A = ["VÔLEI TOP","AMIGOS DE QUINTA","CANTO DA PEDRA","VAI VAI","BOREAL"];
+const TEAMS_B = ["INIMIGOS DO VOLLEY","ESQUADRÃO","BLUMER PLATE","ITOUPAVAS VÔLEI"];
+const GAMES = [
+ {id:"g1", n:"1", rod:1, ch:"A", t1:"VÔLEI TOP", t2:"BOREAL"},
+ {id:"g2", n:"2", rod:1, ch:"A", t1:"AMIGOS DE QUINTA", t2:"VAI VAI"},
+ {id:"w1", n:"WO", rod:1, ch:"A", t1:"CANTO DA PEDRA", t2:"BYE", wo:true},
+ {id:"g3", n:"3", rod:1, ch:"B", t1:"INIMIGOS DO VOLLEY", t2:"ITOUPAVAS VÔLEI"},
+ {id:"g4", n:"4", rod:1, ch:"B", t1:"ESQUADRÃO", t2:"BLUMER PLATE"},
+ {id:"g5", n:"5", rod:2, ch:"A", t1:"BOREAL", t2:"VAI VAI"},
+ {id:"g6", n:"6", rod:2, ch:"A", t1:"VÔLEI TOP", t2:"CANTO DA PEDRA"},
+ {id:"w2", n:"WO", rod:2, ch:"A", t1:"AMIGOS DE QUINTA", t2:"BYE", wo:true},
+ {id:"g7", n:"7", rod:2, ch:"B", t1:"ITOUPAVAS VÔLEI", t2:"BLUMER PLATE"},
+ {id:"g8", n:"8", rod:2, ch:"B", t1:"INIMIGOS DO VOLLEY", t2:"ESQUADRÃO"},
+ {id:"g9", n:"9", rod:3, ch:"A", t1:"VAI VAI", t2:"CANTO DA PEDRA"},
+ {id:"g10", n:"10", rod:3, ch:"A", t1:"BOREAL", t2:"AMIGOS DE QUINTA"},
+ {id:"w3", n:"WO", rod:3, ch:"A", t1:"VÔLEI TOP", t2:"BYE", wo:true},
+ {id:"g11", n:"11", rod:3, ch:"B", t1:"BLUMER PLATE", t2:"INIMIGOS DO VOLLEY"},
+ {id:"g12", n:"12", rod:3, ch:"B", t1:"ITOUPAVAS VÔLEI", t2:"ESQUADRÃO"},
+ {id:"g13", n:"13", rod:4, ch:"A", t1:"CANTO DA PEDRA", t2:"AMIGOS DE QUINTA"},
+ {id:"g14", n:"14", rod:4, ch:"A", t1:"VAI VAI", t2:"VÔLEI TOP"},
+ {id:"w4", n:"WO", rod:4, ch:"A", t1:"BOREAL", t2:"BYE", wo:true},
+ {id:"g15", n:"15", rod:5, ch:"A", t1:"AMIGOS DE QUINTA", t2:"VÔLEI TOP"},
+ {id:"g16", n:"16", rod:5, ch:"A", t1:"CANTO DA PEDRA", t2:"BOREAL"},
+ {id:"w5", n:"WO", rod:5, ch:"A", t1:"VAI VAI", t2:"BYE", wo:true},
+];
+const KEY = "volei_torneio_2026";
+let S = {};
+try { S = JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e) { S = {}; }
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
+
+function sc(g){
+  if (g.wo) return [21,0];
+  const v = S[g.id];
+  if (!v) return null;
+  const a = parseInt(v[0]), b = parseInt(v[1]);
+  if (isNaN(a) || isNaN(b) || a === b) return null;
+  return [a,b];
+}
+function played(g){ return sc(g) !== null; }
+function winner(g){ const s = sc(g); return s ? (s[0] > s[1] ? g.t1 : g.t2) : null; }
+
+// ---------- classificacao ----------
+function stats(teams, ch){
+  const st = {};
+  teams.forEach(t => st[t] = {team:t, pts:0, j:0, v:0, d:0, pp:0, pc:0});
+  GAMES.filter(g => g.ch === ch).forEach(g => {
+    const s = sc(g);
+    if (!s) return;
+    const reg = (t, f, c) => {
+      if (!st[t]) return;
+      st[t].j++; st[t].pp += f; st[t].pc += c;
+      if (f > c) { st[t].v++; st[t].pts += 3; } else st[t].d++;
+    };
+    reg(g.t1, s[0], s[1]);
+    reg(g.t2, s[1], s[0]);
+  });
+  return st;
+}
+function avg(e){ return e.pc === 0 ? (e.pp > 0 ? Infinity : 0) : e.pp / e.pc; }
+function saldo(e){ return e.pp - e.pc; }
+function headToHead(t1, t2, ch){
+  const g = GAMES.find(g => g.ch === ch && !g.wo &&
+    ((g.t1 === t1 && g.t2 === t2) || (g.t1 === t2 && g.t2 === t1)));
+  return g && played(g) ? winner(g) : null;
+}
+function classificar(teams, ch){
+  const st = stats(teams, ch);
+  let arr = teams.map(t => st[t]);
+  arr.sort((a,b) => b.pts - a.pts || b.v - a.v || avg(b) - avg(a) || saldo(b) - saldo(a));
+  // grupos empatados em pts+v
+  const out = [];
+  let i = 0;
+  while (i < arr.length){
+    let j = i;
+    while (j + 1 < arr.length && arr[j+1].pts === arr[i].pts && arr[j+1].v === arr[i].v) j++;
+    const grupo = arr.slice(i, j + 1);
+    if (grupo.length === 2){
+      const w = headToHead(grupo[0].team, grupo[1].team, ch);
+      if (w){
+        if (w === grupo[1].team) grupo.reverse();
+        grupo[0].cd = true; grupo[1].cd = true;
+      }
+    } else if (grupo.length > 2){
+      grupo.sort((a,b) => avg(b) - avg(a) || saldo(b) - saldo(a));
+    }
+    // sorteio: empate total persistente (sem CD aplicado)
+    for (let k = 0; k < grupo.length - 1; k++){
+      const a = grupo[k], b = grupo[k+1];
+      if (!a.cd && a.pts === b.pts && a.v === b.v && avg(a) === avg(b) && saldo(a) === saldo(b)){
+        a.so = true; b.so = true;
+      }
+    }
+    out.push(...grupo);
+    i = j + 1;
+  }
+  return out;
+}
+function fmtAvg(e){
+  const a = avg(e);
+  return a === Infinity ? "∞" : a.toFixed(3).replace(".", ",");
+}
+
+// ---------- render: jogos ----------
+function renderJogos(){
+  const el = document.getElementById("sec-jogos");
+  let html = "";
+  let rod = 0;
+  GAMES.forEach(g => {
+    if (g.rod !== rod){ rod = g.rod; html += `<h2 class="rod">Rodada ${rod}</h2>`; }
+    const s = sc(g), w = winner(g);
+    const v = S[g.id] || ["",""];
+    const fim = g.wo || s;
+    const warn = (!g.wo && v[0] !== "" && v[1] !== "" && s && Math.max(s[0], s[1]) !== 21)
+      ? `<div class="alert">⚠️ No set até 21, o vencedor faz 21 pontos — confira o placar.</div>` : "";
+    const emp = (!g.wo && v[0] !== "" && v[1] !== "" && parseInt(v[0]) === parseInt(v[1]))
+      ? `<div class="alert">⚠️ Não existe empate — confira o placar.</div>` : "";
+    html += `<div class="game${fim ? " done" : ""}${g.wo ? " wo" : ""}">
+      <div class="gtop"><span>Jogo ${g.n} · Chave ${g.ch}</span><span>${g.wo ? "WO — BRASILIS desistiu" : (s ? "✅ encerrado" : "aguardando")}</span></div>
+      <div class="grow">
+        <div class="tname${w === g.t1 ? " win" : ""}">${g.t1}</div>
+        <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${g.wo ? 21 : v[0]}" ${g.wo ? "disabled" : ""} oninput="setScore('${g.id}',0,this.value)">
+        <div class="x">✕</div>
+        <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${g.wo ? 0 : v[1]}" ${g.wo ? "disabled" : ""} oninput="setScore('${g.id}',1,this.value)">
+        <div class="tname right${w === g.t2 ? " win" : ""}">${g.t2}</div>
+      </div>${warn}${emp}</div>`;
+  });
+  el.innerHTML = html;
+}
+function setScore(id, lado, val){
+  if (!S[id]) S[id] = ["",""];
+  S[id][lado] = val;
+  save();
+  renderTabela();
+  renderFinal();
+  // atualiza apenas estado visual do card sem recriar inputs
+  refreshCards();
+}
+function refreshCards(){
+  // recria nomes/status sem perder foco: atualiza só classes via re-render adiado
+  clearTimeout(refreshCards.t);
+  refreshCards.t = setTimeout(() => { const a = document.activeElement; if (!a || a.tagName !== "INPUT") renderJogos(); }, 700);
+}
+
+// ---------- render: tabela ----------
+function tabelaHTML(nome, cls, arr){
+  let h = `<div class="chv ${cls}">CHAVE ${nome}</div>
+  <table><tr><th>#</th><th style="text-align:left">Time</th><th>P</th><th>J</th><th>V</th><th>Avg</th><th>Saldo</th></tr>`;
+  arr.forEach((e, i) => {
+    const badges = (e.cd ? '<span class="badge cd">CD</span>' : "") + (e.so ? '<span class="badge so">SORTEIO</span>' : "");
+    h += `<tr${i < 2 ? ' class="q"' : ""}><td class="pos">${i+1}º</td><td class="tm">${e.team}${badges}</td><td><b>${e.pts}</b></td><td>${e.j}</td><td>${e.v}</td><td>${fmtAvg(e)}</td><td>${saldo(e) > 0 ? "+" : ""}${saldo(e)}</td></tr>`;
+  });
+  return h + "</table>";
+}
+function renderTabela(){
+  const a = classificar(TEAMS_A, "A");
+  const b = classificar(TEAMS_B, "B");
+  document.getElementById("tabela").innerHTML =
+    tabelaHTML("A", "a", a) + tabelaHTML("B", "b", b) +
+    `<div class="note">Linhas destacadas = classificados para a semifinal. BRASILIS VOLEIBOL desistiu (WO).</div>`;
+  renderTabela.A = a; renderTabela.B = b;
+}
+
+// ---------- render: final ----------
+function kSc(id){
+  const v = S[id];
+  if (!v) return null;
+  const a = parseInt(v[0]), b = parseInt(v[1]);
+  return (isNaN(a) || isNaN(b) || a === b) ? null : [a,b];
+}
+function kCard(id, titulo, t1, t2, def1, def2){
+  const v = S[id] || ["",""];
+  const s = kSc(id);
+  const n1 = t1 || def1, n2 = t2 || def2;
+  const w = s ? (s[0] > s[1] ? n1 : n2) : null;
+  const real = !!(t1 && t2);
+  return `<div class="kcard"><div class="ktitle">${titulo}</div>
+    <div class="grow">
+      <div class="tname${w === n1 && real ? " win" : ""}">${n1}</div>
+      <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${v[0]}" ${real ? "" : "disabled"} oninput="setK('${id}',0,this.value)">
+      <div class="x">✕</div>
+      <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${v[1]}" ${real ? "" : "disabled"} oninput="setK('${id}',1,this.value)">
+      <div class="tname right${w === n2 && real ? " win" : ""}">${n2}</div>
+    </div></div>`;
+}
+function setK(id, lado, val){
+  if (!S[id]) S[id] = ["",""];
+  S[id][lado] = val;
+  save();
+  clearTimeout(setK.t);
+  setK.t = setTimeout(() => { const a = document.activeElement; if (!a || a.tagName !== "INPUT") renderFinal(); }, 700);
+}
+function renderFinal(){
+  const A = renderTabela.A || classificar(TEAMS_A, "A");
+  const B = renderTabela.B || classificar(TEAMS_B, "B");
+  const fimClass = GAMES.filter(g => !g.wo).every(played);
+  const a1 = A[0].team, a2 = A[1].team, b1 = B[0].team, b2 = B[1].team;
+  const s17 = kSc("k17"), s18 = kSc("k18"), s19 = kSc("k19"), s20 = kSc("k20");
+  const v17 = s17 ? (s17[0] > s17[1] ? a1 : b2) : null;
+  const p17 = s17 ? (s17[0] > s17[1] ? b2 : a1) : null;
+  const v18 = s18 ? (s18[0] > s18[1] ? b1 : a2) : null;
+  const p18 = s18 ? (s18[0] > s18[1] ? a2 : b1) : null;
+  const v19 = s19 && p17 && p18 ? (s19[0] > s19[1] ? p17 : p18) : null;
+  const v20 = s20 && v17 && v18 ? (s20[0] > s20[1] ? v17 : v18) : null;
+  let h = "";
+  if (!fimClass) h += `<div class="note" style="margin-bottom:10px">⚠️ A classificatória ainda não terminou — os times abaixo refletem a tabela atual e podem mudar.</div>`;
+  h += kCard("k17", "Jogo 17 · Semifinal — 1ºA × 2ºB", a1, b2);
+  h += kCard("k18", "Jogo 18 · Semifinal — 1ºB × 2ºA", b1, a2);
+  h += kCard("k19", "Jogo 19 · 3º/4º lugar", p17, p18, "Perdedor J17", "Perdedor J18");
+  h += kCard("k20", "Jogo 20 · FINAL", v17, v18, "Vencedor J17", "Vencedor J18");
+  h += `<div class="champ">🏆 CAMPEÃO<div class="nm">${v20 || "—"}</div></div>`;
+  h += `<div class="bronze">🥉 3º lugar: <b>${v19 || "—"}</b></div>`;
+  document.getElementById("sec-final").innerHTML = h;
+}
+
+// ---------- util ----------
+function tab(t){
+  ["jogos","tabela","final","regras"].forEach(x => {
+    document.getElementById("sec-" + x).classList.toggle("on", x === t);
+    document.getElementById("nav-" + x).classList.toggle("on", x === t);
+  });
+  if (t === "jogos") renderJogos();
+  window.scrollTo(0,0);
+}
+function zerar(){
+  if (confirm("Apagar TODOS os placares digitados? (os WO continuam)")){
+    S = {}; save(); renderJogos(); renderTabela(); renderFinal(); tab("jogos");
+  }
+}
+function compartilhar(){
+  const A = classificar(TEAMS_A, "A"), B = classificar(TEAMS_B, "B");
+  const linha = (e,i) => `${i+1}º ${e.team} — ${e.pts} pts (${e.v}V, avg ${fmtAvg(e)})`;
+  const txt = "🏐 TORNEIO DE VÔLEI\n\nCHAVE A\n" + A.map(linha).join("\n") +
+              "\n\nCHAVE B\n" + B.map(linha).join("\n");
+  if (navigator.share) navigator.share({text: txt}).catch(() => {});
+  else { navigator.clipboard && navigator.clipboard.writeText(txt); alert("Classificação copiada!"); }
+}
+
+renderJogos(); renderTabela(); renderFinal();
+</script>
+</body>
+</html>
