@@ -69,7 +69,7 @@ nav button.on{color:var(--acc)}
 <body>
 <header>
   <h1>🏐 Torneio de Vôlei — Masculino</h1>
-  <p>Set único até 21 · sem vantagem · vitória = 3 pts</p>
+  <p>Set único até 21 · sem vantagem · vitória = 3 pts · <span id="sync">⏳ conectando…</span></p>
 </header>
 <div class="wrap">
 
@@ -91,7 +91,7 @@ nav button.on{color:var(--acc)}
     <ul>
       <li>Na aba <b>Jogos</b>, digite o placar do set de cada equipe. Tudo calcula sozinho.</li>
       <li>Jogo em <b>set único até 21 pontos, sem vantagem</b> (não precisa de 2 de diferença) — o vencedor sempre faz 21.</li>
-      <li>Os dados ficam salvos no seu celular automaticamente.</li>
+      <li><b>Sincronização ao vivo:</b> o placar que alguém digita aparece em segundos no celular de todos (🟢 ao vivo no topo). Sem internet, continua funcionando no aparelho (🔴) e sincroniza quando a conexão voltar.</li>
     </ul>
     <h3>Pontuação</h3>
     <ul>
@@ -153,6 +153,91 @@ const KEY = "volei_torneio_2026";
 let S = {};
 try { S = JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e) { S = {}; }
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
+
+// ---------- sincronizacao em tempo real (Firebase) ----------
+const DBROOT = "https://torneio-volei-70b37-default-rtdb.firebaseio.com/";
+let pend = {};
+let live = false;
+let es = null;
+function setSync(st){
+  const el = document.getElementById("sync");
+  if (!el) return;
+  el.textContent = st === "on" ? "🟢 ao vivo" : st === "syncing" ? "🟡 sincronizando…" : "🔴 offline (salvo no aparelho)";
+}
+function pushKey(id){ pend[id] = true; flush(); }
+async function flush(){
+  const keys = Object.keys(pend);
+  if (!keys.length){ setSync(live ? "on" : "off"); return; }
+  setSync("syncing");
+  for (const k of keys){
+    try {
+      await fetch(DBROOT + "placares/" + k + ".json", {method: "PUT", body: JSON.stringify(S[k] !== undefined ? S[k] : null)});
+      delete pend[k];
+    } catch(e){ setSync("off"); return; }
+  }
+  setSync(live ? "on" : "off");
+}
+setInterval(flush, 8000);
+window.addEventListener("online", flush);
+function rerenderRemote(){
+  renderTabela(); renderFinal();
+  const a = document.activeElement;
+  if (!a || a.tagName !== "INPUT") renderJogos(); else refreshCards();
+}
+function applyRemote(path, data){
+  let changed = false;
+  if (path === "/"){
+    const nd = data || {};
+    if (JSON.stringify(nd) !== JSON.stringify(S)){ S = nd; changed = true; }
+  } else {
+    const parts = path.slice(1).split("/");
+    const k = parts[0];
+    if (pend[k]) return; // edicao local em andamento prevalece
+    let nv;
+    if (parts.length === 1) nv = data;
+    else { nv = S[k] ? S[k].slice() : ["",""]; nv[parseInt(parts[1])] = data; }
+    if (JSON.stringify(nv === undefined ? null : nv) !== JSON.stringify(S[k] !== undefined ? S[k] : null)){
+      if (nv === null || nv === undefined) delete S[k]; else S[k] = nv;
+      changed = true;
+    }
+  }
+  if (changed){ save(); rerenderRemote(); }
+}
+function patchRemote(path, obj){
+  if (!obj) return;
+  Object.keys(obj).forEach(k => applyRemote(path === "/" ? "/" + k : path + "/" + k, obj[k]));
+}
+function connect(){
+  try { es = new EventSource(DBROOT + "placares.json"); } catch(e){ setSync("off"); return; }
+  es.addEventListener("put", e => { const d = JSON.parse(e.data); live = true; applyRemote(d.path, d.data); setSync(Object.keys(pend).length ? "syncing" : "on"); });
+  es.addEventListener("patch", e => { const d = JSON.parse(e.data); live = true; patchRemote(d.path, d.data); });
+  es.onopen = () => { live = true; setSync(Object.keys(pend).length ? "syncing" : "on"); };
+  es.onerror = () => { live = false; setSync("off"); };
+}
+async function refreshFromCloud(){
+  try {
+    const r = await fetch(DBROOT + "placares.json");
+    const d = await r.json();
+    applyRemote("/", d);
+    live = true;
+    setSync(Object.keys(pend).length ? "syncing" : "on");
+    if (!es || es.readyState === 2) connect();
+  } catch(e){ live = false; setSync("off"); }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshFromCloud(); });
+(async () => {
+  try {
+    const r = await fetch(DBROOT + "placares.json");
+    const remote = await r.json();
+    if ((!remote || !Object.keys(remote).length) && Object.keys(S).length){
+      // primeira conexao: sobe o que ja estava salvo neste aparelho
+      await fetch(DBROOT + "placares.json", {method: "PUT", body: JSON.stringify(S)});
+    } else if (remote){
+      S = remote; save(); renderJogos(); renderTabela(); renderFinal();
+    }
+    connect();
+  } catch(e){ setSync("off"); }
+})();
 
 function sc(g){
   if (g.wo) return [21,0];
@@ -256,6 +341,7 @@ function setScore(id, lado, val){
   if (!S[id]) S[id] = ["",""];
   S[id][lado] = val;
   save();
+  pushKey(id);
   renderTabela();
   renderFinal();
   // atualiza apenas estado visual do card sem recriar inputs
@@ -312,6 +398,7 @@ function setK(id, lado, val){
   if (!S[id]) S[id] = ["",""];
   S[id][lado] = val;
   save();
+  pushKey(id);
   clearTimeout(setK.t);
   setK.t = setTimeout(() => { const a = document.activeElement; if (!a || a.tagName !== "INPUT") renderFinal(); }, 700);
 }
@@ -347,10 +434,12 @@ function tab(t){
   if (t === "jogos") renderJogos();
   window.scrollTo(0,0);
 }
-function zerar(){
-  if (confirm("Apagar TODOS os placares digitados? (os WO continuam)")){
-    S = {}; save(); renderJogos(); renderTabela(); renderFinal(); tab("jogos");
-  }
+async function zerar(){
+  if (!confirm("Apagar TODOS os placares digitados? (os WO continuam)\n\nIsso apaga para TODOS os celulares conectados.")) return;
+  try {
+    await fetch(DBROOT + "placares.json", {method: "PUT", body: "null"});
+  } catch(e){ alert("Sem conexão — conecte na internet e tente de novo."); return; }
+  S = {}; pend = {}; save(); renderJogos(); renderTabela(); renderFinal(); tab("jogos");
 }
 function compartilhar(){
   const A = classificar(TEAMS_A, "A"), B = classificar(TEAMS_B, "B");
