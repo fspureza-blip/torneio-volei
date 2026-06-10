@@ -124,7 +124,7 @@ nav button.on{color:var(--acc)}
     <h3>Pontuação</h3>
     <ul>
       <li>Vitória = <b>3 pontos</b> · Derrota = 0</li>
-      <li><b>WO:</b> o BRASILIS VOLEIBOL desistiu. Os jogos contra ele (BYE) já estão lançados como vitória por 21×0 e 3 pontos.</li>
+      <li><b>WO:</b> o BRASILIS VOLEIBOL desistiu. A regra será decidida no dia do torneio: por padrão os jogos contra o BYE valem vitória por 21×0 + 3 pontos, mas dá para mudar para "não vale pontos" no botão ⚖️ abaixo — a mudança vale para todos os celulares na hora.</li>
     </ul>
     <h3>Critérios de desempate (em ordem)</h3>
     <ul>
@@ -219,11 +219,18 @@ async function flush(){
 function protegido(k){ return pend[k] || (recent[k] && Date.now() - recent[k] < 4000); }
 
 // ---------- modo torneio (trava de digitacao) ----------
-let CFG = {travado: false, pin: ""};
+let CFG = {travado: false, pin: "", woVale: true};
 function podeEditar(){ return !CFG.travado || localStorage.getItem("volei_pin") === String(CFG.pin); }
 function setCfg(c){
-  const nc = (c && typeof c === "object") ? {travado: !!c.travado, pin: c.pin !== undefined ? String(c.pin) : ""} : {travado: false, pin: ""};
-  if (JSON.stringify(nc) !== JSON.stringify(CFG)){ CFG = nc; lockRender(); }
+  const nc = (c && typeof c === "object")
+    ? {travado: !!c.travado, pin: c.pin !== undefined ? String(c.pin) : "", woVale: c.woVale === undefined ? true : !!c.woVale}
+    : {travado: false, pin: "", woVale: true};
+  if (JSON.stringify(nc) !== JSON.stringify(CFG)){ CFG = nc; lockRender(); renderTabela(); }
+}
+async function salvarCfg(parcial){
+  const nc = Object.assign({travado: CFG.travado, pin: CFG.pin, woVale: CFG.woVale}, parcial);
+  await fetch(DBROOT + "config.json", {method: "PUT", body: JSON.stringify(nc)});
+  CFG = nc; lockRender(); renderTabela();
 }
 function lockRender(){
   const a = document.activeElement;
@@ -233,18 +240,27 @@ function lockRender(){
 function renderAdmin(){
   const el = document.getElementById("admin");
   if (!el) return;
-  let h = "";
+  let h = `<button class="abtn" onclick="toggleWO()">⚖️ WO (BYE): ${CFG.woVale ? "vale vitória + 3 pts (21x0)" : "NÃO vale pontos"} — tocar para mudar</button>`;
   if (!CFG.travado){
-    h = `<button class="abtn" onclick="ativarModo()">🔒 Ativar modo torneio (só o mesário digita)</button>
+    h += `<button class="abtn" onclick="ativarModo()">🔒 Ativar modo torneio (só o mesário digita)</button>
          <div class="note">Use no dia do torneio: trava a digitação em todos os celulares, menos no do mesário (protegido por PIN). Na ativação dá para zerar os placares de teste.</div>`;
   } else if (podeEditar()){
-    h = `<div class="note">🔒 <b>Modo torneio ATIVO</b> — este aparelho é o mesário e pode digitar.</div>
+    h += `<div class="note">🔒 <b>Modo torneio ATIVO</b> — este aparelho é o mesário e pode digitar.</div>
          <button class="abtn" onclick="liberarModo()">🔓 Liberar digitação para todos</button>`;
   } else {
-    h = `<div class="note">🔒 <b>Modo torneio ATIVO</b> — somente o mesário digita os placares.</div>
+    h += `<div class="note">🔒 <b>Modo torneio ATIVO</b> — somente o mesário digita os placares.</div>
          <button class="abtn" onclick="souMesario()">Sou o mesário (digitar PIN)</button>`;
   }
   el.innerHTML = h;
+}
+async function toggleWO(){
+  if (!podeEditar()){ alert("Modo torneio ativo — somente o mesário pode mudar a regra do WO."); return; }
+  const novo = !CFG.woVale;
+  const msg = novo
+    ? "Os jogos de WO (contra o BYE) passam a valer VITÓRIA + 3 pontos + placar 21x0.\n\nVale para todos os celulares na hora. Confirmar?"
+    : "Os jogos de WO (contra o BYE) deixam de valer pontos — não contam vitória, pontos nem placar na classificação.\n\nVale para todos os celulares na hora. Confirmar?";
+  if (!confirm(msg)) return;
+  try { await salvarCfg({woVale: novo}); } catch(e){ alert("Sem conexão — tente novamente."); }
 }
 async function ativarModo(){
   const pin = prompt("Defina o PIN do mesário (ex.: 4 dígitos). Guarde bem!");
@@ -252,18 +268,15 @@ async function ativarModo(){
   const zera = confirm("Zerar TODOS os placares também? (recomendado no dia do torneio)\n\nOK = zerar e travar · Cancelar = só travar, mantendo os placares");
   try {
     if (zera) await fetch(DBROOT + "placares.json", {method: "PUT", body: "null"});
-    await fetch(DBROOT + "config.json", {method: "PUT", body: JSON.stringify({travado: true, pin: String(pin)})});
+    localStorage.setItem("volei_pin", String(pin));
+    if (zera){ S = {}; pend = {}; save(); }
+    await salvarCfg({travado: true, pin: String(pin)});
   } catch(e){ alert("Sem conexão — tente novamente."); return; }
-  localStorage.setItem("volei_pin", String(pin));
-  if (zera){ S = {}; pend = {}; save(); renderTabela(); }
-  CFG = {travado: true, pin: String(pin)};
-  lockRender();
   alert("Modo torneio ativado! Só este aparelho digita agora.");
 }
 async function liberarModo(){
   if (!confirm("Liberar a digitação para TODOS os celulares?")) return;
-  try { await fetch(DBROOT + "config.json", {method: "PUT", body: JSON.stringify({travado: false, pin: String(CFG.pin || "")})}); } catch(e){ alert("Sem conexão — tente novamente."); return; }
-  CFG = {travado: false, pin: CFG.pin}; lockRender();
+  try { await salvarCfg({travado: false}); } catch(e){ alert("Sem conexão — tente novamente."); }
 }
 function souMesario(){
   const p = prompt("PIN do mesário:");
@@ -276,7 +289,7 @@ function routeRemote(path, data){
   else if (path === "/placares") applyRemote("/", data);
   else if (path.indexOf("/placares/") === 0) applyRemote(path.slice(9), data);
   else if (path === "/config") setCfg(data);
-  else if (path.indexOf("/config/") === 0){ const k = path.split("/")[2]; const nc = {travado: CFG.travado, pin: CFG.pin}; nc[k] = data; setCfg(nc); }
+  else if (path.indexOf("/config/") === 0){ const k = path.split("/")[2]; const nc = {travado: CFG.travado, pin: CFG.pin, woVale: CFG.woVale}; nc[k] = data; setCfg(nc); }
 }
 function routePatch(path, obj){
   if (!obj) return;
@@ -364,7 +377,7 @@ function winner(g){ const s = sc(g); return s ? (s[0] > s[1] ? g.t1 : g.t2) : nu
 function stats(teams, ch){
   const st = {};
   teams.forEach(t => st[t] = {team:t, pts:0, j:0, v:0, d:0, pp:0, pc:0});
-  GAMES.filter(g => g.ch === ch).forEach(g => {
+  GAMES.filter(g => g.ch === ch && (CFG.woVale || !g.wo)).forEach(g => {
     const s = sc(g);
     if (!s) return;
     const reg = (t, f, c) => {
@@ -439,7 +452,7 @@ function renderJogos(){
     const emp = (!g.wo && v[0] !== "" && v[1] !== "" && parseInt(v[0]) === parseInt(v[1]))
       ? `<div class="alert">⚠️ Não existe empate — confira o placar.</div>` : "";
     html += `<div class="game${fim ? " done" : ""}${g.wo ? " wo" : ""}">
-      <div class="gtop"><span>Jogo ${g.n} · Chave ${g.ch}</span><span>${g.wo ? "WO — BRASILIS desistiu" : (s ? "✅ encerrado" : "aguardando")}</span></div>
+      <div class="gtop"><span>Jogo ${g.n} · Chave ${g.ch}</span><span>${g.wo ? (CFG.woVale ? "WO — vitória 21x0 (3 pts)" : "WO — não vale pontos") : (s ? "✅ encerrado" : "aguardando")}</span></div>
       <div class="grow">
         <div class="tname${w === g.t1 ? " win" : ""}">${g.t1}</div>
         <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${g.wo ? 21 : v[0]}" ${(g.wo || !podeEditar()) ? "disabled" : ""} oninput="setScore('${g.id}',0,this.value)">
