@@ -124,7 +124,7 @@ nav button.on{color:var(--acc)}
     <h3>Pontuação</h3>
     <ul>
       <li>Vitória = <b>3 pontos</b> · Derrota = 0</li>
-      <li><b>WO:</b> o BRASILIS VOLEIBOL desistiu. A regra será decidida no dia do torneio: por padrão os jogos contra o BYE valem vitória por 21×0 + 3 pontos, mas dá para mudar para "não vale pontos" no botão ⚖️ abaixo — a mudança vale para todos os celulares na hora.</li>
+      <li><b>WO:</b> o BRASILIS VOLEIBOL desistiu. A regra será decidida no dia do torneio: por padrão os jogos contra o BYE <b>não valem pontos</b> (todos começam zerados), mas dá para mudar para "vitória 21×0 + 3 pontos" no botão ⚖️ abaixo — a mudança vale para todos os celulares na hora.</li>
     </ul>
     <h3>Critérios de desempate (em ordem)</h3>
     <ul>
@@ -219,12 +219,12 @@ async function flush(){
 function protegido(k){ return pend[k] || (recent[k] && Date.now() - recent[k] < 4000); }
 
 // ---------- modo torneio (trava de digitacao) ----------
-let CFG = {travado: false, pin: "", woVale: true};
+let CFG = {travado: false, pin: "", woVale: false};
 function podeEditar(){ return !CFG.travado || localStorage.getItem("volei_pin") === String(CFG.pin); }
 function setCfg(c){
   const nc = (c && typeof c === "object")
-    ? {travado: !!c.travado, pin: c.pin !== undefined ? String(c.pin) : "", woVale: c.woVale === undefined ? true : !!c.woVale}
-    : {travado: false, pin: "", woVale: true};
+    ? {travado: !!c.travado, pin: c.pin !== undefined ? String(c.pin) : "", woVale: !!c.woVale}
+    : {travado: false, pin: "", woVale: false};
   if (JSON.stringify(nc) !== JSON.stringify(CFG)){ CFG = nc; lockRender(); renderTabela(); }
 }
 async function salvarCfg(parcial){
