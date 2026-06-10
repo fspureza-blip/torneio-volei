@@ -50,10 +50,11 @@ tr.q td{background:rgba(54,162,255,.10)}
 .note{font-size:11.5px; color:var(--mut); margin:8px 4px 0; line-height:1.5}
 .kcard{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:10px}
 .ktitle{font-size:12px; color:var(--acc); font-weight:700; text-transform:uppercase; margin-bottom:8px}
-.champ{background:linear-gradient(135deg,#3a2f00,#6b5500); border:1px solid var(--gold); border-radius:14px; padding:16px; text-align:center; margin-top:14px}
+.champ{background:linear-gradient(135deg,#3a2f00,#6b5500); border:1px solid var(--gold); border-radius:14px; padding:16px; text-align:center; margin-bottom:8px}
 .champ .nm{font-size:21px; font-weight:800; color:var(--gold); margin-top:4px}
-.bronze{text-align:center; margin-top:10px; color:var(--mut); font-size:14px}
-.bronze b{color:#d9a06b}
+.podio{display:flex; justify-content:space-between; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:6px; font-size:14px}
+.podio span{color:var(--mut); font-size:12.5px}
+.podio b{font-size:14px}
 .scard{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:10px}
 .scard.q100{border-color:#2c5c3f}
 .scard.q0{opacity:.6}
@@ -349,13 +350,9 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) refr
   try {
     const r = await fetch(DBROOT + ".json");
     const d = await r.json();
-    const remote = d ? d.placares : null;
-    if ((!remote || !Object.keys(remote).length) && Object.keys(S).length){
-      // primeira conexao: sobe o que ja estava salvo neste aparelho
-      await fetch(DBROOT + "placares.json", {method: "PUT", body: JSON.stringify(S)});
-    } else if (remote){
-      S = remote; save(); renderJogos(); renderTabela(); renderFinal();
-    }
+    // a nuvem e a fonte da verdade; o aparelho e so cache para ver offline
+    S = (d && d.placares) ? d.placares : {};
+    save(); renderJogos(); renderTabela(); renderFinal();
     setCfg(d ? d.config : null);
     renderAdmin();
     connect();
@@ -531,26 +528,33 @@ function setK(id, lado, val){
   clearTimeout(setK.t);
   setK.t = setTimeout(() => { const a = document.activeElement; if (!a || a.tagName !== "INPUT") renderFinal(); }, 700);
 }
-function renderFinal(){
+function resultadoFinal(){
   const A = renderTabela.A || classificar(TEAMS_A, "A");
   const B = renderTabela.B || classificar(TEAMS_B, "B");
-  const fimClass = GAMES.filter(g => !g.wo).every(played);
   const a1 = A[0].team, a2 = A[1].team, b1 = B[0].team, b2 = B[1].team;
   const s17 = kSc("k17"), s18 = kSc("k18"), s19 = kSc("k19"), s20 = kSc("k20");
   const v17 = s17 ? (s17[0] > s17[1] ? a1 : b2) : null;
   const p17 = s17 ? (s17[0] > s17[1] ? b2 : a1) : null;
   const v18 = s18 ? (s18[0] > s18[1] ? b1 : a2) : null;
   const p18 = s18 ? (s18[0] > s18[1] ? a2 : b1) : null;
-  const v19 = s19 && p17 && p18 ? (s19[0] > s19[1] ? p17 : p18) : null;
-  const v20 = s20 && v17 && v18 ? (s20[0] > s20[1] ? v17 : v18) : null;
-  let h = "";
-  if (!fimClass) h += `<div class="note" style="margin-bottom:10px">⚠️ A classificatória ainda não terminou — os times abaixo refletem a tabela atual e podem mudar.</div>`;
-  h += kCard("k17", "Jogo 17 · Semifinal — 1ºA × 2ºB", a1, b2);
-  h += kCard("k18", "Jogo 18 · Semifinal — 1ºB × 2ºA", b1, a2);
-  h += kCard("k19", "Jogo 19 · 3º/4º lugar", p17, p18, "Perdedor J17", "Perdedor J18");
-  h += kCard("k20", "Jogo 20 · FINAL", v17, v18, "Vencedor J17", "Vencedor J18");
-  h += `<div class="champ">🏆 CAMPEÃO<div class="nm">${v20 || "—"}</div></div>`;
-  h += `<div class="bronze">🥉 3º lugar: <b>${v19 || "—"}</b></div>`;
+  const terceiro = s19 && p17 && p18 ? (s19[0] > s19[1] ? p17 : p18) : null;
+  const quarto = s19 && p17 && p18 ? (s19[0] > s19[1] ? p18 : p17) : null;
+  const campeao = s20 && v17 && v18 ? (s20[0] > s20[1] ? v17 : v18) : null;
+  const vice = s20 && v17 && v18 ? (s20[0] > s20[1] ? v18 : v17) : null;
+  return {a1, a2, b1, b2, v17, p17, v18, p18, campeao, vice, terceiro, quarto};
+}
+function renderFinal(){
+  const R = resultadoFinal();
+  const fimClass = GAMES.filter(g => !g.wo).every(played);
+  let h = `<div class="champ">🏆 CAMPEÃO<div class="nm">${R.campeao || "a definir"}</div></div>
+    <div class="podio"><span>🥈 Vice-campeão</span><b>${R.vice || "—"}</b></div>
+    <div class="podio"><span>🥉 3º lugar</span><b>${R.terceiro || "—"}</b></div>
+    <div class="podio"><span>4º lugar</span><b>${R.quarto || "—"}</b></div>`;
+  if (!fimClass) h += `<div class="note" style="margin:10px 0">⚠️ A classificatória ainda não terminou — os times abaixo refletem a tabela atual e podem mudar.</div>`;
+  h += kCard("k17", "Jogo 17 · Semifinal — 1ºA × 2ºB", R.a1, R.b2);
+  h += kCard("k18", "Jogo 18 · Semifinal — 1ºB × 2ºA", R.b1, R.a2);
+  h += kCard("k19", "Jogo 19 · 3º/4º lugar", R.p17, R.p18, "Perdedor J17", "Perdedor J18");
+  h += kCard("k20", "Jogo 20 · FINAL", R.v17, R.v18, "Vencedor J17", "Vencedor J18");
   document.getElementById("sec-final").innerHTML = h;
 }
 
@@ -665,8 +669,14 @@ async function zerar(){
 function compartilhar(){
   const A = classificar(TEAMS_A, "A"), B = classificar(TEAMS_B, "B");
   const linha = (e,i) => `${i+1}º ${e.team} — ${e.pts} pts (${e.v}V, avg ${fmtAvg(e)})`;
-  const txt = "🏐 TORNEIO DE VÔLEI\n\nCHAVE A\n" + A.map(linha).join("\n") +
+  let txt = "🏐 TORNEIO DE VÔLEI\n\nCHAVE A\n" + A.map(linha).join("\n") +
               "\n\nCHAVE B\n" + B.map(linha).join("\n");
+  const R = resultadoFinal();
+  if (R.campeao || R.terceiro){
+    txt += "\n\n— FASE FINAL —";
+    if (R.campeao) txt += `\n🏆 Campeão: ${R.campeao}\n🥈 Vice: ${R.vice}`;
+    if (R.terceiro) txt += `\n🥉 3º lugar: ${R.terceiro}\n4º lugar: ${R.quarto}`;
+  }
   if (navigator.share) navigator.share({text: txt}).catch(() => {});
   else { navigator.clipboard && navigator.clipboard.writeText(txt); alert("Classificação copiada!"); }
 }
