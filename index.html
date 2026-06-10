@@ -54,6 +54,26 @@ tr.q td{background:rgba(54,162,255,.10)}
 .champ .nm{font-size:21px; font-weight:800; color:var(--gold); margin-top:4px}
 .bronze{text-align:center; margin-top:10px; color:var(--mut); font-size:14px}
 .bronze b{color:#d9a06b}
+.scard{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:10px}
+.scard.q100{border-color:#2c5c3f}
+.scard.q0{opacity:.6}
+.shead{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px}
+.sname{font-weight:800; font-size:14px}
+.sname small{color:var(--mut); font-weight:600}
+.spct{font-weight:800; font-size:14px; white-space:nowrap}
+.spct.ok{color:var(--ok)}
+.spct.bad{color:var(--bad)}
+.spct.mid{color:var(--acc)}
+.sbar{height:8px; background:var(--card2); border-radius:6px; overflow:hidden; margin-bottom:10px}
+.sbar i{display:block; height:100%; border-radius:6px; background:var(--acc); transition:width .4s}
+.sbar i.ok{background:var(--ok)}
+.sbar i.bad{background:var(--bad)}
+.sgrid{display:grid; grid-template-columns:repeat(4,1fr); gap:6px; text-align:center}
+.sgrid>div{background:var(--card2); border-radius:8px; padding:6px 2px}
+.sgrid .lb{font-size:9px; color:var(--mut); text-transform:uppercase; letter-spacing:.04em}
+.sgrid .vl{font-size:14px; font-weight:700}
+.snext{font-size:11px; color:var(--mut); margin-top:9px; line-height:1.6}
+.snext b{color:var(--txt)}
 nav{position:fixed; bottom:0; left:0; right:0; display:flex; background:#0e1a2c; border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom)}
 nav button{flex:1; background:none; border:none; color:var(--mut); font-size:11px; padding:9px 0 7px; cursor:pointer}
 nav button .ic{display:block; font-size:21px; margin-bottom:2px}
@@ -84,6 +104,11 @@ nav button.on{color:var(--acc)}
 </section>
 
 <section id="sec-final" class="sec" ></section>
+
+<section id="sec-stats" class="sec">
+  <div id="stats"></div>
+  <div class="note"><b>Como a % é calculada:</b> o app simula todos os resultados ainda possíveis dos jogos restantes da chave (cada time com 50% de chance em cada jogo) e conta em quantos cenários a equipe termina entre as 2 primeiras. Empates de posição são divididos igualmente (confronto direto e average dependem de placares futuros). Os 2 primeiros de cada chave vão à semifinal.</div>
+</section>
 
 <section id="sec-regras" class="sec">
   <div class="rules">
@@ -119,6 +144,7 @@ nav button.on{color:var(--acc)}
 <nav>
   <button id="nav-jogos" class="on" onclick="tab('jogos')"><span class="ic">📋</span>Jogos</button>
   <button id="nav-tabela" onclick="tab('tabela')"><span class="ic">🏆</span>Tabela</button>
+  <button id="nav-stats" onclick="tab('stats')"><span class="ic">📊</span>Estatística</button>
   <button id="nav-final" onclick="tab('final')"><span class="ic">🥇</span>Final</button>
   <button id="nav-regras" onclick="tab('regras')"><span class="ic">📖</span>Regras</button>
 </nav>
@@ -159,24 +185,34 @@ const DBROOT = "https://torneio-volei-70b37-default-rtdb.firebaseio.com/";
 let pend = {};
 let live = false;
 let es = null;
+let seq = 0;
+let flushing = false;
+const recent = {};
 function setSync(st){
   const el = document.getElementById("sync");
   if (!el) return;
   el.textContent = st === "on" ? "🟢 ao vivo" : st === "syncing" ? "🟡 sincronizando…" : "🔴 offline (salvo no aparelho)";
 }
-function pushKey(id){ pend[id] = true; flush(); }
+function pushKey(id){ pend[id] = ++seq; recent[id] = Date.now(); flush(); }
 async function flush(){
-  const keys = Object.keys(pend);
-  if (!keys.length){ setSync(live ? "on" : "off"); return; }
-  setSync("syncing");
-  for (const k of keys){
-    try {
-      await fetch(DBROOT + "placares/" + k + ".json", {method: "PUT", body: JSON.stringify(S[k] !== undefined ? S[k] : null)});
-      delete pend[k];
-    } catch(e){ setSync("off"); return; }
-  }
-  setSync(live ? "on" : "off");
+  if (flushing) return;
+  flushing = true;
+  try {
+    let keys;
+    while ((keys = Object.keys(pend)).length){
+      setSync("syncing");
+      const k = keys[0];
+      const token = pend[k];
+      const body = JSON.stringify(S[k] !== undefined ? S[k] : null);
+      try {
+        await fetch(DBROOT + "placares/" + k + ".json", {method: "PUT", body: body});
+        if (pend[k] === token) delete pend[k]; // se digitou de novo durante o envio, reenvia
+      } catch(e){ setSync("off"); return; }
+    }
+    setSync(live ? "on" : "off");
+  } finally { flushing = false; }
 }
+function protegido(k){ return pend[k] || (recent[k] && Date.now() - recent[k] < 4000); }
 setInterval(flush, 8000);
 window.addEventListener("online", flush);
 function rerenderRemote(){
@@ -188,11 +224,13 @@ function applyRemote(path, data){
   let changed = false;
   if (path === "/"){
     const nd = data || {};
+    // edicoes locais recentes prevalecem sobre o snapshot completo
+    Object.keys(S).forEach(k => { if (protegido(k)) nd[k] = S[k]; });
     if (JSON.stringify(nd) !== JSON.stringify(S)){ S = nd; changed = true; }
   } else {
     const parts = path.slice(1).split("/");
     const k = parts[0];
-    if (pend[k]) return; // edicao local em andamento prevalece
+    if (protegido(k)) return; // edicao local em andamento prevalece
     let nv;
     if (parts.length === 1) nv = data;
     else { nv = S[k] ? S[k].slice() : ["",""]; nv[parseInt(parts[1])] = data; }
@@ -370,6 +408,7 @@ function renderTabela(){
     tabelaHTML("A", "a", a) + tabelaHTML("B", "b", b) +
     `<div class="note">Linhas destacadas = classificados para a semifinal. BRASILIS VOLEIBOL desistiu (WO).</div>`;
   renderTabela.A = a; renderTabela.B = b;
+  if (typeof renderStats === "function") renderStats();
 }
 
 // ---------- render: final ----------
@@ -425,9 +464,100 @@ function renderFinal(){
   document.getElementById("sec-final").innerHTML = h;
 }
 
+// ---------- estatisticas / chances ----------
+function chanceClassificacao(teams, ch){
+  const rest = GAMES.filter(g => g.ch === ch && !g.wo && !played(g));
+  const res = {};
+  if (!rest.length){
+    const ord = classificar(teams, ch);
+    ord.forEach((e,i) => res[e.team] = {pct: i < 2 ? 100 : 0, winAll: null});
+    return res;
+  }
+  const st = stats(teams, ch);
+  const baseV = {};
+  teams.forEach(t => baseV[t] = st[t].v);
+  const acc = {}, accWA = {}, cntWA = {};
+  teams.forEach(t => { acc[t] = 0; accWA[t] = 0; cntWA[t] = 0; });
+  const total = 1 << rest.length;
+  for (let m = 0; m < total; m++){
+    const v = Object.assign({}, baseV);
+    for (let i = 0; i < rest.length; i++) v[(m >> i) & 1 ? rest[i].t1 : rest[i].t2]++;
+    const w = teams.map(t => v[t]).sort((a,b) => b - a);
+    const cut = w[1];
+    const nSure = teams.filter(t => v[t] > cut).length;
+    const nTied = teams.filter(t => v[t] === cut).length;
+    const share = (2 - nSure) / nTied;
+    const ganho = t => v[t] > cut ? 1 : (v[t] === cut ? share : 0);
+    teams.forEach(t => {
+      acc[t] += ganho(t);
+      let wa = true;
+      for (let i = 0; i < rest.length; i++){
+        if (rest[i].t1 === t && !((m >> i) & 1)){ wa = false; break; }
+        if (rest[i].t2 === t && ((m >> i) & 1)){ wa = false; break; }
+      }
+      if (wa){ cntWA[t]++; accWA[t] += ganho(t); }
+    });
+  }
+  teams.forEach(t => {
+    const temJogo = rest.some(g => g.t1 === t || g.t2 === t);
+    res[t] = {pct: acc[t] / total * 100, winAll: temJogo ? accWA[t] / cntWA[t] * 100 : null};
+  });
+  return res;
+}
+function fmtPct(p){
+  if (p >= 99.95) return 100;
+  if (p <= 0.05) return 0;
+  let r = Math.round(p);
+  if (r === 100) r = 99;
+  if (r === 0) r = 1;
+  return r;
+}
+function renderStats(){
+  const el = document.getElementById("stats");
+  if (!el) return;
+  let h = "";
+  [["A", "a", TEAMS_A], ["B", "b", TEAMS_B]].forEach(([nome, cls, teams]) => {
+    const ord = classificar(teams, nome);
+    const ch = chanceClassificacao(teams, nome);
+    const rest = GAMES.filter(g => g.ch === nome && !g.wo && !played(g));
+    h += `<div class="chv ${cls}">CHAVE ${nome}</div>`;
+    ord.forEach((e, i) => {
+      const c = ch[e.team];
+      const p = fmtPct(c.pct);
+      const cl = p === 100 ? "ok" : p === 0 ? "bad" : "mid";
+      const rotulo = p === 100 ? "✓ CLASSIFICADO" : p === 0 ? "✗ Eliminado" : p + "% de chance";
+      const meus = rest.filter(g => g.t1 === e.team || g.t2 === e.team)
+        .map(g => `<b>${g.t1 === e.team ? g.t2 : g.t1}</b> (R${g.rod})`);
+      let extra = "";
+      if (meus.length) extra += `Falta jogar: ${meus.join(" · ")}`;
+      if (c.winAll !== null && p > 0 && p < 100){
+        const wa = fmtPct(c.winAll);
+        extra += (extra ? "<br>" : "") + (wa === 100
+          ? "✅ <b>Vencendo todos os seus jogos, está classificado.</b>"
+          : `Vencendo todos os seus jogos, classifica em <b>${wa}%</b> dos cenários (depende de outros resultados).`);
+      }
+      h += `<div class="scard${p === 100 ? " q100" : ""}${p === 0 ? " q0" : ""}">
+        <div class="shead"><div class="sname"><small>${i+1}º</small> ${e.team}</div><div class="spct ${cl}">${rotulo}</div></div>
+        <div class="sbar"><i class="${cl === "mid" ? "" : cl}" style="width:${Math.max(p,2)}%"></i></div>
+        <div class="sgrid">
+          <div><div class="lb">Jogos</div><div class="vl">${e.j}</div></div>
+          <div><div class="lb">Vitórias</div><div class="vl">${e.v}</div></div>
+          <div><div class="lb">Derrotas</div><div class="vl">${e.d}</div></div>
+          <div><div class="lb">Pontos</div><div class="vl">${e.pts}</div></div>
+          <div><div class="lb">Pts feitos</div><div class="vl">${e.pp}</div></div>
+          <div><div class="lb">Pts sofridos</div><div class="vl">${e.pc}</div></div>
+          <div><div class="lb">Average</div><div class="vl">${fmtAvg(e)}</div></div>
+          <div><div class="lb">Saldo</div><div class="vl">${saldo(e) > 0 ? "+" : ""}${saldo(e)}</div></div>
+        </div>
+        ${extra ? `<div class="snext">${extra}</div>` : ""}</div>`;
+    });
+  });
+  el.innerHTML = h;
+}
+
 // ---------- util ----------
 function tab(t){
-  ["jogos","tabela","final","regras"].forEach(x => {
+  ["jogos","tabela","final","stats","regras"].forEach(x => {
     document.getElementById("sec-" + x).classList.toggle("on", x === t);
     document.getElementById("nav-" + x).classList.toggle("on", x === t);
   });
