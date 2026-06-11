@@ -608,6 +608,58 @@ function chanceClassificacao(teams, ch){
   });
   return res;
 }
+function caminhoClassificacao(team, teams, ch){
+  const rest = GAMES.filter(g => g.ch === ch && !g.wo && !played(g));
+  if (!rest.length) return null;
+  const st = stats(teams, ch);
+  const baseV = {};
+  teams.forEach(t => baseV[t] = st[t].v);
+  const total = 1 << rest.length;
+  const ownIdx = [], extIdx = [];
+  rest.forEach((g, i) => (g.t1 === team || g.t2 === team ? ownIdx : extIdx).push(i));
+  const sure = new Array(total), ownW = new Array(total);
+  for (let m = 0; m < total; m++){
+    const v = Object.assign({}, baseV);
+    for (let i = 0; i < rest.length; i++) v[(m >> i) & 1 ? rest[i].t1 : rest[i].t2]++;
+    let above = 0, equal = 0;
+    teams.forEach(t => { if (t === team) return; if (v[t] > v[team]) above++; else if (v[t] === v[team]) equal++; });
+    sure[m] = (above + equal) <= 1; // vaga certa, sem depender de desempate
+    ownW[m] = ownIdx.filter(i => ((m >> i) & 1 ? rest[i].t1 : rest[i].t2) === team).length;
+  }
+  // menor numero de vitorias proprias que garante a vaga sozinho
+  for (let k = 1; k <= ownIdx.length; k++){
+    let ok = true;
+    for (let m = 0; m < total; m++){ if (ownW[m] >= k && !sure[m]){ ok = false; break; } }
+    if (ok) return {tipo: "vencaK", k, n: ownIdx.length};
+  }
+  // vencendo todos os proprios + menor combinacao de resultados externos
+  const fmtCond = c => { const g = rest[c.gi]; return {quem: c.side ? g.t1 : g.t2, contra: c.side ? g.t2 : g.t1, rod: g.rod}; };
+  const testa = conds => {
+    let existe = false;
+    for (let m = 0; m < total; m++){
+      if (ownW[m] !== ownIdx.length) continue;
+      if (!conds.every(c => ((m >> c.gi) & 1) === c.side)) continue;
+      existe = true;
+      if (!sure[m]) return false;
+    }
+    return existe;
+  };
+  for (let s = 1; s <= Math.min(3, extIdx.length); s++){
+    const idx = Array.from({length: s}, (_, i) => i);
+    while (true){
+      for (let mask = 0; mask < (1 << s); mask++){
+        const conds = idx.map((j, pos) => ({gi: extIdx[j], side: (mask >> pos) & 1}));
+        if (testa(conds)) return {tipo: "mais", n: ownIdx.length, conds: conds.map(fmtCond)};
+      }
+      let p = s - 1;
+      while (p >= 0 && idx[p] === extIdx.length - s + p) p--;
+      if (p < 0) break;
+      idx[p]++;
+      for (let q = p + 1; q < s; q++) idx[q] = idx[q-1] + 1;
+    }
+  }
+  return {tipo: "semGarantia", n: ownIdx.length};
+}
 function fmtPct(p){
   if (p >= 99.95) return 100;
   if (p <= 0.05) return 0;
@@ -645,11 +697,22 @@ function renderStats(){
         rec = "❌ <b>Sem chance de vaga.</b> Joga pela honra — e os pontos ainda mexem na tabela dos outros. 💪";
       } else {
         rec = `🎯 Avança em <b>1º: ${fmtPct(c.p1)}%</b> · em <b>2º: ${fmtPct(Math.max(c.pct - c.p1, 0))}%</b>`;
-        if (c.winAll !== null){
-          const wa = fmtPct(c.winAll);
-          rec += wa === 100
-            ? `<br>✅ <b>Depende só de si:</b> vença ${c.nRest === 1 ? "seu último jogo" : "seus " + c.nRest + " jogos restantes"} e a vaga está garantida, sem depender de ninguém.`
-            : `<br>⚠️ Mesmo vencendo todos os seus jogos, garante a vaga em só <b>${wa}%</b> dos cenários — precisa de ajuda de outros resultados.`;
+        const cam = caminhoClassificacao(e.team, teams, nome);
+        if (cam){
+          const meusJogos = cam.n === 1 ? "seu último jogo" : "seus " + cam.n + " jogos restantes";
+          if (cam.tipo === "vencaK"){
+            rec += cam.k === cam.n
+              ? `<br>✅ <b>Depende só de si:</b> vença ${meusJogos} e a vaga está garantida.`
+              : `<br>✅ <b>Garantia:</b> vença <b>${cam.k} de ${cam.n}</b> jogos restantes (quaisquer) e está classificado.`;
+          } else if (cam.tipo === "mais"){
+            const ext = cam.conds.map(o => `<b>${o.quem}</b> vencer ${o.contra} (R${o.rod})`).join(" e ");
+            rec += cam.n > 0
+              ? `<br>📋 <b>Resultados que garantem a vaga:</b> vença ${meusJogos} + ${ext}.`
+              : `<br>📋 <b>Resultados que garantem a vaga:</b> ${ext}.`;
+            if (c.winAll !== null && fmtPct(c.winAll) < 100) rec += ` (mesmo vencendo tudo, sem essa ajuda fica em ${fmtPct(c.winAll)}% dos cenários)`;
+          } else {
+            rec += `<br>⚠️ <b>Não há combinação que garanta a vaga</b> — vença ${meusJogos} e faça o máximo de pontos: o desempate pode vir do average (pontos feitos ÷ sofridos).`;
+          }
         }
         if (c.torcidas.length){
           rec += `<br>🙏 <b>Torça por:</b> ` + c.torcidas.map(o => `${o.quem} vencer ${o.contra} (R${o.rod}, +${Math.round(o.ganho)}%)`).join(" · ");
