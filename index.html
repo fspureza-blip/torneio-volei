@@ -564,37 +564,47 @@ function chanceClassificacao(teams, ch){
   const res = {};
   if (!rest.length){
     const ord = classificar(teams, ch);
-    ord.forEach((e,i) => res[e.team] = {pct: i < 2 ? 100 : 0, winAll: null});
+    ord.forEach((e,i) => res[e.team] = {pct: i < 2 ? 100 : 0, p1: i === 0 ? 100 : 0, winAll: null, torcidas: [], nRest: 0});
     return res;
   }
   const st = stats(teams, ch);
   const baseV = {};
   teams.forEach(t => baseV[t] = st[t].v);
-  const acc = {}, accWA = {}, cntWA = {};
-  teams.forEach(t => { acc[t] = 0; accWA[t] = 0; cntWA[t] = 0; });
+  const acc = {}, acc1 = {}, accWA = {}, cntWA = {}, cond = {};
+  teams.forEach(t => { acc[t] = 0; acc1[t] = 0; accWA[t] = 0; cntWA[t] = 0; cond[t] = rest.map(() => [0,0]); });
   const total = 1 << rest.length;
   for (let m = 0; m < total; m++){
     const v = Object.assign({}, baseV);
     for (let i = 0; i < rest.length; i++) v[(m >> i) & 1 ? rest[i].t1 : rest[i].t2]++;
     const w = teams.map(t => v[t]).sort((a,b) => b - a);
-    const cut = w[1];
+    const cut = w[1], top = w[0];
     const nSure = teams.filter(t => v[t] > cut).length;
     const nTied = teams.filter(t => v[t] === cut).length;
     const share = (2 - nSure) / nTied;
-    const ganho = t => v[t] > cut ? 1 : (v[t] === cut ? share : 0);
+    const nTop = teams.filter(t => v[t] === top).length;
     teams.forEach(t => {
-      acc[t] += ganho(t);
+      const g2 = v[t] > cut ? 1 : (v[t] === cut ? share : 0);
+      acc[t] += g2;
+      acc1[t] += v[t] === top ? 1 / nTop : 0;
       let wa = true;
       for (let i = 0; i < rest.length; i++){
         if (rest[i].t1 === t && !((m >> i) & 1)){ wa = false; break; }
         if (rest[i].t2 === t && ((m >> i) & 1)){ wa = false; break; }
       }
-      if (wa){ cntWA[t]++; accWA[t] += ganho(t); }
+      if (wa){ cntWA[t]++; accWA[t] += g2; }
+      for (let i = 0; i < rest.length; i++) cond[t][i][(m >> i) & 1] += g2;
     });
   }
   teams.forEach(t => {
-    const temJogo = rest.some(g => g.t1 === t || g.t2 === t);
-    res[t] = {pct: acc[t] / total * 100, winAll: temJogo ? accWA[t] / cntWA[t] * 100 : null};
+    const nRest = rest.filter(g => g.t1 === t || g.t2 === t).length;
+    const torc = [];
+    rest.forEach((g, i) => {
+      if (g.t1 === t || g.t2 === t) return;
+      const diff = (cond[t][i][1] - cond[t][i][0]) / (total / 2) * 100;
+      if (Math.abs(diff) >= 2) torc.push({quem: diff > 0 ? g.t1 : g.t2, contra: diff > 0 ? g.t2 : g.t1, rod: g.rod, ganho: Math.abs(diff)});
+    });
+    torc.sort((a,b) => b.ganho - a.ganho);
+    res[t] = {pct: acc[t] / total * 100, p1: acc1[t] / total * 100, winAll: nRest ? accWA[t] / cntWA[t] * 100 : null, torcidas: torc.slice(0,3), nRest};
   });
   return res;
 }
@@ -624,12 +634,28 @@ function renderStats(){
         .map(g => `<b>${g.t1 === e.team ? g.t2 : g.t1}</b> (R${g.rod})`);
       let extra = "";
       if (meus.length) extra += `Falta jogar: ${meus.join(" · ")}`;
-      if (c.winAll !== null && p > 0 && p < 100){
-        const wa = fmtPct(c.winAll);
-        extra += (extra ? "<br>" : "") + (wa === 100
-          ? "✅ <b>Vencendo todos os seus jogos, está classificado.</b>"
-          : `Vencendo todos os seus jogos, classifica em <b>${wa}%</b> dos cenários (depende de outros resultados).`);
+      let rec = "";
+      if (p === 100){
+        const p1f = fmtPct(c.p1);
+        rec = "✅ <b>Vaga garantida na semifinal!</b>";
+        if (p1f === 100) rec += " Termina em <b>1º lugar</b> da chave.";
+        else if (p1f === 0) rec += " Termina em <b>2º lugar</b> da chave.";
+        else rec += ` Chance de terminar em 1º: <b>${p1f}%</b> (o 1º pega o 2º da outra chave na semi).`;
+      } else if (p === 0){
+        rec = "❌ <b>Sem chance de vaga.</b> Joga pela honra — e os pontos ainda mexem na tabela dos outros. 💪";
+      } else {
+        rec = `🎯 Avança em <b>1º: ${fmtPct(c.p1)}%</b> · em <b>2º: ${fmtPct(Math.max(c.pct - c.p1, 0))}%</b>`;
+        if (c.winAll !== null){
+          const wa = fmtPct(c.winAll);
+          rec += wa === 100
+            ? `<br>✅ <b>Depende só de si:</b> vença ${c.nRest === 1 ? "seu último jogo" : "seus " + c.nRest + " jogos restantes"} e a vaga está garantida, sem depender de ninguém.`
+            : `<br>⚠️ Mesmo vencendo todos os seus jogos, garante a vaga em só <b>${wa}%</b> dos cenários — precisa de ajuda de outros resultados.`;
+        }
+        if (c.torcidas.length){
+          rec += `<br>🙏 <b>Torça por:</b> ` + c.torcidas.map(o => `${o.quem} vencer ${o.contra} (R${o.rod}, +${Math.round(o.ganho)}%)`).join(" · ");
+        }
       }
+      extra += (extra ? "<br>" : "") + rec;
       h += `<div class="scard${p === 100 ? " q100" : ""}${p === 0 ? " q0" : ""}">
         <div class="shead"><div class="sname"><small>${i+1}º</small> ${e.team}</div><div class="spct ${cl}">${rotulo}</div></div>
         <div class="sbar"><i class="${cl === "mid" ? "" : cl}" style="width:${Math.max(p,2)}%"></i></div>
