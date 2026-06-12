@@ -37,9 +37,8 @@ h2.rod{font-size:13px; color:var(--acc); text-transform:uppercase; letter-spacin
 .tname.win::after{content:" ✓"; color:var(--ok); font-weight:800}
 .tcard{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:10px}
 .tcard .tt{font-size:14px; font-weight:800; margin-bottom:8px}
-.tcard textarea{width:100%; min-height:96px; background:var(--card2); border:1.5px solid var(--line); border-radius:10px; color:var(--txt); font-family:inherit; font-size:13px; line-height:1.6; padding:8px 10px; outline:none; resize:vertical}
-.tcard textarea:focus{border-color:var(--acc)}
-.tcard textarea:disabled{opacity:.7}
+.tcard ol.roster{margin:0; padding-left:24px; font-size:13px; line-height:1.8; color:var(--txt)}
+.tcard ol.roster li::marker{color:var(--mut); font-size:11px}
 .tcard .cnt{font-size:11px; color:var(--mut); margin-top:5px}
 input.score{width:56px; height:44px; font-size:19px; font-weight:700; text-align:center; color:var(--txt); background:var(--card2); border:1.5px solid var(--line); border-radius:10px; outline:none}
 input.score:focus{border-color:var(--acc)}
@@ -245,6 +244,20 @@ function tn(name){
 function teamKey(name){
   return name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
 }
+const ROSTERS = {
+  m: {
+    "VÔLEI TOP": ["Cristian Piedro Volkert Garcia","João Felipe Espindola","André Vicentini (sócio 233205)","Sérgio Luís Pereira Carvalho","Felipe de Farias","Kevin Katzer"],
+    "AMIGOS DE QUINTA": ["Adenir Schirmer","Ivan Carlos Zucki","Leonardo Bruno Zabel","Emerson Lucas Bertelli Cardoso","Vanderlei Silvério dos Santos","Paulo Sergio Viana de Moraes"],
+    "CANTO DA PEDRA": ["Caio Italo de França e Silva Cesário","Marcos Paiano","Fabricio dos Santos Pureza","Caio Kretz Kretzer","Tiago Martins da Silva","Ludgero João dos Santos Junior"],
+    "VAI VAI": ["Jonathan Lindner (sócio dependente 230898)","Rafael Graf","Alison Leonar Graf Esbiteskoski","Evandro Alvisi","Luis Henrique Toccolini","Geovani Souza Dias"],
+    "BOREAL": ["Adelir Artur Furtado (sócio dependente 234141)","Felipe Adriano Cordeiro","Guilherme dos Santos","Davi Augusto Coelho","Lucas Eduardo Blum"],
+    "INIMIGOS DO VOLLEY": ["Agnaldo Lourenço de Lima Junior (sócio dependente 232433)","Saimon Serena","Robson Leandro Pereira","Martyn Rangel Figueiredo","Leonardo Moura Santos","Julio Cesar da Luz"],
+    "ESQUADRÃO": ["Anderson de Almeida","Jonathan Henrique Draeger","Diego Augusto Colombo","Tiago Floriano da Silva"],
+    "BLUMER PLATE": ["Alex Fernandes De Souza (sócio dependente 232058)","Jair Dalmarco Junior (sócio 233960)","Michael Jose Cunha","Thiago Schlei Menegazzi"],
+    "ITOUPAVAS VÔLEI": ["Márcio Roberto Pfleger","Kauan Dias Lenzi","Luiz Alberto Soares Sabel","Vitor Renan Maoeski Gottchefski","Gabriel Boaventura"]
+  },
+  f: {}
+};
 const KEY = "volei_torneio_2026";
 let GEN = localStorage.getItem("volei_gen") === "f" ? "f" : "m";
 function D(){ return DATA[GEN]; }
@@ -821,31 +834,23 @@ function renderTimes(){
   [["A", "a", D().A], ["B", "b", D().B]].forEach(([nome, cls, teams]) => {
     h += `<div class="chv ${cls}">CHAVE ${nome} — ${D().nome}</div>`;
     teams.forEach(t => {
-      const k = teamKey(t) + (GEN === "f" ? "_f" : "_m");
-      const txt = TIMES[k] || "";
-      const cnt = txt.split("\n").map(s => s.trim()).filter(Boolean).length;
+      const lista = (ROSTERS[GEN] && ROSTERS[GEN][t]) || [];
       const cor = TEAM_COLORS[t];
+      let corpo;
+      if (lista.length){
+        corpo = `<ol class="roster">` + lista.map(p => `<li>${p}</li>`).join("") + `</ol>
+          <div class="cnt">${lista.length} participante${lista.length > 1 ? "s" : ""} inscritos</div>`;
+      } else {
+        corpo = `<div class="cnt">Lista de inscritos ainda não informada.</div>`;
+      }
       h += `<div class="tcard"${cor ? ` style="border-color:${cor}"` : ""}>
         <div class="tt">${cor ? `<span style="color:${cor}">●</span> ` : ""}${tn(t)}</div>
-        <textarea placeholder="Digite os participantes, um por linha" ${podeEditar() ? "" : "disabled"} oninput="setTime('${k}', this.value)">${txt}</textarea>
-        <div class="cnt">${cnt ? cnt + " participante" + (cnt > 1 ? "s" : "") : "nenhum participante cadastrado"}</div>
+        ${corpo}
       </div>`;
     });
   });
-  h += `<div class="note">A lista sincroniza para todos os celulares. ${CFG.travado ? "Modo torneio ativo: só o mesário edita." : "Qualquer um pode preencher o próprio time."}</div>`;
+  h += `<div class="note">Inscrições encerradas — listas oficiais do torneio.</div>`;
   el.innerHTML = h;
-}
-setTime.t = {};
-function setTime(k, val){
-  if (!podeEditar()) return;
-  TIMES[k] = val;
-  recentT[k] = Date.now();
-  clearTimeout(setTime.t[k]);
-  setTime.t[k] = setTimeout(() => {
-    fetch(DBROOT + "times/" + k + ".json", {method: "PUT", body: JSON.stringify(val)}).catch(() => {});
-    const card = document.activeElement;
-    if (!card || card.tagName !== "TEXTAREA") renderTimes();
-  }, 800);
 }
 
 // ---------- util ----------
