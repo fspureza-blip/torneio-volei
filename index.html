@@ -34,6 +34,13 @@ h2.rod{font-size:13px; color:var(--acc); text-transform:uppercase; letter-spacin
 .tname{font-size:13px; font-weight:600; line-height:1.15}
 .tname.right{text-align:right}
 .tname.win{color:var(--ok)}
+.tname.win::after{content:" ✓"; color:var(--ok); font-weight:800}
+.tcard{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:10px}
+.tcard .tt{font-size:14px; font-weight:800; margin-bottom:8px}
+.tcard textarea{width:100%; min-height:96px; background:var(--card2); border:1.5px solid var(--line); border-radius:10px; color:var(--txt); font-family:inherit; font-size:13px; line-height:1.6; padding:8px 10px; outline:none; resize:vertical}
+.tcard textarea:focus{border-color:var(--acc)}
+.tcard textarea:disabled{opacity:.7}
+.tcard .cnt{font-size:11px; color:var(--mut); margin-top:5px}
 input.score{width:56px; height:44px; font-size:19px; font-weight:700; text-align:center; color:var(--txt); background:var(--card2); border:1.5px solid var(--line); border-radius:10px; outline:none}
 input.score:focus{border-color:var(--acc)}
 input.score:disabled{background:transparent; border-style:dashed}
@@ -80,8 +87,8 @@ tr.q td{background:rgba(54,162,255,.10)}
 .snext{font-size:11px; color:var(--mut); margin-top:9px; line-height:1.6}
 .snext b{color:var(--txt)}
 nav{position:fixed; bottom:0; left:0; right:0; display:flex; background:#0e1a2c; border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom)}
-nav button{flex:1; background:none; border:none; color:var(--mut); font-size:11px; padding:9px 0 7px; cursor:pointer}
-nav button .ic{display:block; font-size:21px; margin-bottom:2px}
+nav button{flex:1; background:none; border:none; color:var(--mut); font-size:10px; padding:9px 0 7px; cursor:pointer}
+nav button .ic{display:block; font-size:20px; margin-bottom:2px}
 nav button.on{color:var(--acc)}
 .rules{background:var(--card); border-radius:14px; padding:14px 16px; font-size:13.5px; line-height:1.65}
 .rules h3{color:var(--acc); font-size:13px; text-transform:uppercase; margin:16px 0 6px}
@@ -122,6 +129,8 @@ nav button.on{color:var(--acc)}
   <div class="note"><b>Como a % é calculada:</b> o app simula todos os resultados ainda possíveis dos jogos restantes da chave (cada time com 50% de chance em cada jogo) e conta em quantos cenários a equipe termina entre as 2 primeiras. Empates de posição são divididos igualmente. Os 2 primeiros de cada chave vão à semifinal.</div>
 </section>
 
+<section id="sec-times" class="sec"></section>
+
 <section id="sec-regras" class="sec">
   <div class="rules">
     <h3>Como usar</h3>
@@ -160,6 +169,7 @@ nav button.on{color:var(--acc)}
   <button id="nav-tabela" onclick="tab('tabela')"><span class="ic">🏆</span>Tabela</button>
   <button id="nav-stats" onclick="tab('stats')"><span class="ic">📊</span>Estatística</button>
   <button id="nav-final" onclick="tab('final')"><span class="ic">🥇</span>Final</button>
+  <button id="nav-times" onclick="tab('times')"><span class="ic">👥</span>Times</button>
   <button id="nav-regras" onclick="tab('regras')"><span class="ic">📖</span>Regras</button>
 </nav>
 
@@ -222,9 +232,23 @@ const GAMES = [
   {id:"f15", n:15, ch:"FB", t1:"AS CULÉGUINHAS", t2:"MINAS TÊNIS CLUBE"},
   {id:"f16", n:16, ch:"FB", t1:"PÉROLAS DO VÔLEI", t2:"PRAIA CLUBE"}
 ];
+const TEAM_COLORS = {
+  "CANTO DA PEDRA": "#ff5d5d",
+  "VAI VAI": "#ffd84d",
+  "BOREAL": "#4da3ff",
+  "AS CULÉGUINHAS": "#ff7ab8"
+};
+function tn(name){
+  const c = TEAM_COLORS[name];
+  return c ? `<span style="color:${c};font-weight:700">${name}</span>` : name;
+}
+function teamKey(name){
+  return name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+}
 const KEY = "volei_torneio_2026";
 let GEN = localStorage.getItem("volei_gen") === "f" ? "f" : "m";
 function D(){ return DATA[GEN]; }
+let TIMES = {};
 let S = {};
 try { S = JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e) { S = {}; }
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
@@ -283,6 +307,7 @@ function lockRender(){
   const a = document.activeElement;
   if (!a || a.tagName !== "INPUT") renderJogos();
   renderFinal(); renderAdmin();
+  if (!a || a.tagName !== "TEXTAREA") renderTimes();
 }
 function renderAdmin(){
   const el = document.getElementById("admin");
@@ -331,12 +356,28 @@ function souMesario(){
   if (String(p) === String(CFG.pin)){ localStorage.setItem("volei_pin", String(p)); lockRender(); alert("Liberado! Este aparelho agora pode digitar."); }
   else alert("PIN incorreto.");
 }
+const recentT = {};
+function applyTimes(k, val){
+  if (recentT[k] && Date.now() - recentT[k] < 4000) return;
+  const nv = val || "";
+  if (TIMES[k] === nv) return;
+  TIMES[k] = nv;
+  const a = document.activeElement;
+  if (!a || a.tagName !== "TEXTAREA") renderTimes();
+}
 function routeRemote(path, data){
-  if (path === "/"){ setCfg(data ? data.config : null); applyRemote("/", data ? data.placares : null); }
+  if (path === "/"){
+    setCfg(data ? data.config : null);
+    applyRemote("/", data ? data.placares : null);
+    const nt = (data && data.times) ? data.times : {};
+    Object.keys(Object.assign({}, TIMES, nt)).forEach(k => applyTimes(k, nt[k]));
+  }
   else if (path === "/placares") applyRemote("/", data);
   else if (path.indexOf("/placares/") === 0) applyRemote(path.slice(9), data);
   else if (path === "/config") setCfg(data);
   else if (path.indexOf("/config/") === 0){ const k = path.split("/")[2]; const nc = {travado: CFG.travado, pin: CFG.pin, woVale: CFG.woVale}; nc[k] = data; setCfg(nc); }
+  else if (path === "/times"){ const nt = data || {}; Object.keys(Object.assign({}, TIMES, nt)).forEach(k => applyTimes(k, nt[k])); }
+  else if (path.indexOf("/times/") === 0){ applyTimes(path.split("/")[2], data); }
 }
 function routePatch(path, obj){
   if (!obj) return;
@@ -485,11 +526,11 @@ function cardJogo(g){
   return `<div class="game${fim ? " done" : ""}${g.wo ? " wo" : ""}">
     <div class="gtop"><span>Jogo ${g.n} · Chave ${chaveLabel}</span><span>${g.wo ? "WO — vitória 21×0 (3 pts)" : (s ? "✅ encerrado" : "aguardando")}</span></div>
     <div class="grow">
-      <div class="tname${w === g.t1 ? " win" : ""}">${g.t1}</div>
+      <div class="tname${w === g.t1 ? " win" : ""}">${tn(g.t1)}</div>
       <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${g.wo ? 21 : v[0]}" ${(g.wo || !podeEditar()) ? "disabled" : ""} oninput="setScore('${g.id}',0,this.value)">
       <div class="x">✕</div>
       <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${g.wo ? 0 : v[1]}" ${(g.wo || !podeEditar()) ? "disabled" : ""} oninput="setScore('${g.id}',1,this.value)">
-      <div class="tname right${w === g.t2 ? " win" : ""}">${g.t2}</div>
+      <div class="tname right${w === g.t2 ? " win" : ""}">${tn(g.t2)}</div>
     </div>${warn}${emp}</div>`;
 }
 function setScore(id, lado, val){
@@ -513,7 +554,7 @@ function tabelaHTML(nome, cls, arr){
   <table><tr><th>#</th><th style="text-align:left">Time</th><th>P</th><th>J</th><th>V</th><th>Avg</th><th>Saldo</th></tr>`;
   arr.forEach((e, i) => {
     const badges = (e.cd ? '<span class="badge cd">CD</span>' : "") + (e.so ? '<span class="badge so">SORTEIO</span>' : "");
-    h += `<tr${i < 2 ? ' class="q"' : ""}><td class="pos">${i+1}º</td><td class="tm">${e.team}${badges}</td><td><b>${e.pts}</b></td><td>${e.j}</td><td>${e.v}</td><td>${fmtAvg(e)}</td><td>${saldo(e) > 0 ? "+" : ""}${saldo(e)}</td></tr>`;
+    h += `<tr${i < 2 ? ' class="q"' : ""}><td class="pos">${i+1}º</td><td class="tm">${tn(e.team)}${badges}</td><td><b>${e.pts}</b></td><td>${e.j}</td><td>${e.v}</td><td>${fmtAvg(e)}</td><td>${saldo(e) > 0 ? "+" : ""}${saldo(e)}</td></tr>`;
   });
   return h + "</table>";
 }
@@ -651,7 +692,7 @@ function renderStats(){
       const cl = p === 100 ? "ok" : p === 0 ? "bad" : "mid";
       const rotulo = p === 100 ? "✓ CLASSIFICADO" : p === 0 ? "✗ Eliminado" : p + "% de chance";
       const meus = rest.filter(g => g.t1 === e.team || g.t2 === e.team)
-        .map(g => `<b>${g.t1 === e.team ? g.t2 : g.t1}</b> (jogo ${g.n})`);
+        .map(g => `<b>${tn(g.t1 === e.team ? g.t2 : g.t1)}</b> (jogo ${g.n})`);
       let extra = "";
       if (meus.length) extra += `Falta jogar: ${meus.join(" · ")}`;
       let rec = "";
@@ -673,7 +714,7 @@ function renderStats(){
               ? `<br>✅ <b>Depende só de si:</b> vença ${meusJogos} e a vaga está garantida.`
               : `<br>✅ <b>Garantia:</b> vença <b>${cam.k} de ${cam.n}</b> jogos restantes (quaisquer) e está classificado.`;
           } else if (cam.tipo === "mais"){
-            const ext = cam.conds.map(o => `<b>${o.quem}</b> vencer ${o.contra} (jogo ${o.n})`).join(" e ");
+            const ext = cam.conds.map(o => `<b>${tn(o.quem)}</b> vencer ${tn(o.contra)} (jogo ${o.n})`).join(" e ");
             rec += cam.n > 0
               ? `<br>📋 <b>Resultados que garantem a vaga:</b> vença ${meusJogos} + ${ext}.`
               : `<br>📋 <b>Resultados que garantem a vaga:</b> ${ext}.`;
@@ -683,12 +724,12 @@ function renderStats(){
           }
         }
         if (c.torcidas.length){
-          rec += `<br>🙏 <b>Torça por:</b> ` + c.torcidas.map(o => `${o.quem} vencer ${o.contra} (jogo ${o.n}, +${Math.round(o.ganho)}%)`).join(" · ");
+          rec += `<br>🙏 <b>Torça por:</b> ` + c.torcidas.map(o => `${tn(o.quem)} vencer ${tn(o.contra)} (jogo ${o.n}, +${Math.round(o.ganho)}%)`).join(" · ");
         }
       }
       extra += (extra ? "<br>" : "") + rec;
       h += `<div class="scard${p === 100 ? " q100" : ""}${p === 0 ? " q0" : ""}">
-        <div class="shead"><div class="sname"><small>${i+1}º</small> ${e.team}</div><div class="spct ${cl}">${rotulo}</div></div>
+        <div class="shead"><div class="sname"><small>${i+1}º</small> ${tn(e.team)}</div><div class="spct ${cl}">${rotulo}</div></div>
         <div class="sbar"><i class="${cl === "mid" ? "" : cl}" style="width:${Math.max(p,2)}%"></i></div>
         <div class="sgrid">
           <div><div class="lb">Jogos</div><div class="vl">${e.j}</div></div>
@@ -721,11 +762,11 @@ function kCard(id, titulo, t1, t2, def1, def2){
   const real = !!(t1 && t2);
   return `<div class="kcard"><div class="ktitle">${titulo}</div>
     <div class="grow">
-      <div class="tname${w === n1 && real ? " win" : ""}">${n1}</div>
+      <div class="tname${w === n1 && real ? " win" : ""}">${tn(n1)}</div>
       <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${v[0]}" ${(real && podeEditar()) ? "" : "disabled"} oninput="setK('${id}',0,this.value)">
       <div class="x">✕</div>
       <input class="score" type="number" inputmode="numeric" min="0" max="21" value="${v[1]}" ${(real && podeEditar()) ? "" : "disabled"} oninput="setK('${id}',1,this.value)">
-      <div class="tname right${w === n2 && real ? " win" : ""}">${n2}</div>
+      <div class="tname right${w === n2 && real ? " win" : ""}">${tn(n2)}</div>
     </div></div>`;
 }
 function setK(id, lado, val){
@@ -760,10 +801,10 @@ function renderFinal(){
   const k = D().k;
   const fimClass = GAMES.filter(g => (g.ch === D().chA || g.ch === D().chB) && !g.wo).every(played);
   let h = `<h2 class="rod" style="margin-top:4px">${D().nome} · ${D().quadra} — Fase final</h2>
-    <div class="champ">🏆 CAMPEÃO<div class="nm">${R.campeao || "a definir"}</div></div>
-    <div class="podio"><span>🥈 Vice-campeão</span><b>${R.vice || "—"}</b></div>
-    <div class="podio"><span>🥉 3º lugar</span><b>${R.terceiro || "—"}</b></div>
-    <div class="podio"><span>4º lugar</span><b>${R.quarto || "—"}</b></div>`;
+    <div class="champ">🏆 CAMPEÃO<div class="nm">${R.campeao ? tn(R.campeao) : "a definir"}</div></div>
+    <div class="podio"><span>🥈 Vice-campeão</span><b>${R.vice ? tn(R.vice) : "—"}</b></div>
+    <div class="podio"><span>🥉 3º lugar</span><b>${R.terceiro ? tn(R.terceiro) : "—"}</b></div>
+    <div class="podio"><span>4º lugar</span><b>${R.quarto ? tn(R.quarto) : "—"}</b></div>`;
   if (!fimClass) h += `<div class="note" style="margin:10px 0">⚠️ A classificatória ainda não terminou — os times abaixo refletem a tabela atual e podem mudar.</div>`;
   h += kCard(k.s1, "Jogo 17 · Semifinal — 1ºA × 2ºB", R.a1, R.b2);
   h += kCard(k.s2, "Jogo 18 · Semifinal — 1ºB × 2ºA", R.b1, R.a2);
@@ -772,17 +813,52 @@ function renderFinal(){
   el.innerHTML = h;
 }
 
+// ---------- render: times ----------
+function renderTimes(){
+  const el = document.getElementById("sec-times");
+  if (!el) return;
+  let h = "";
+  [["A", "a", D().A], ["B", "b", D().B]].forEach(([nome, cls, teams]) => {
+    h += `<div class="chv ${cls}">CHAVE ${nome} — ${D().nome}</div>`;
+    teams.forEach(t => {
+      const k = teamKey(t) + (GEN === "f" ? "_f" : "_m");
+      const txt = TIMES[k] || "";
+      const cnt = txt.split("\n").map(s => s.trim()).filter(Boolean).length;
+      const cor = TEAM_COLORS[t];
+      h += `<div class="tcard"${cor ? ` style="border-color:${cor}"` : ""}>
+        <div class="tt">${cor ? `<span style="color:${cor}">●</span> ` : ""}${tn(t)}</div>
+        <textarea placeholder="Digite os participantes, um por linha" ${podeEditar() ? "" : "disabled"} oninput="setTime('${k}', this.value)">${txt}</textarea>
+        <div class="cnt">${cnt ? cnt + " participante" + (cnt > 1 ? "s" : "") : "nenhum participante cadastrado"}</div>
+      </div>`;
+    });
+  });
+  h += `<div class="note">A lista sincroniza para todos os celulares. ${CFG.travado ? "Modo torneio ativo: só o mesário edita." : "Qualquer um pode preencher o próprio time."}</div>`;
+  el.innerHTML = h;
+}
+setTime.t = {};
+function setTime(k, val){
+  if (!podeEditar()) return;
+  TIMES[k] = val;
+  recentT[k] = Date.now();
+  clearTimeout(setTime.t[k]);
+  setTime.t[k] = setTimeout(() => {
+    fetch(DBROOT + "times/" + k + ".json", {method: "PUT", body: JSON.stringify(val)}).catch(() => {});
+    const card = document.activeElement;
+    if (!card || card.tagName !== "TEXTAREA") renderTimes();
+  }, 800);
+}
+
 // ---------- util ----------
 function setGen(g){
   GEN = g;
   localStorage.setItem("volei_gen", g);
   document.getElementById("gw-m").className = g === "m" ? "on-m" : "";
   document.getElementById("gw-f").className = g === "f" ? "on-f" : "";
-  renderJogos(); renderTabela(); renderFinal();
+  renderJogos(); renderTabela(); renderFinal(); renderTimes();
   window.scrollTo(0,0);
 }
 function tab(t){
-  ["jogos","tabela","final","stats","regras"].forEach(x => {
+  ["jogos","tabela","final","stats","times","regras"].forEach(x => {
     document.getElementById("sec-" + x).classList.toggle("on", x === t);
     document.getElementById("nav-" + x).classList.toggle("on", x === t);
   });
@@ -821,7 +897,8 @@ renderAdmin();
     const d = await r.json();
     // a nuvem e a fonte da verdade; o aparelho e so cache para ver offline
     S = (d && d.placares) ? d.placares : {};
-    save(); renderJogos(); renderTabela(); renderFinal();
+    TIMES = (d && d.times) ? d.times : {};
+    save(); renderJogos(); renderTabela(); renderFinal(); renderTimes();
     setCfg(d ? d.config : null);
     renderAdmin();
     connect();
