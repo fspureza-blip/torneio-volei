@@ -16,7 +16,8 @@
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
 body{margin:0; font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif; background:var(--bg); color:var(--txt); padding-bottom:84px}
 header{position:sticky; top:0; z-index:10; background:linear-gradient(135deg,#101c2e,#16365c); padding:12px 16px 10px; box-shadow:0 2px 12px rgba(0,0,0,.45)}
-header h1{margin:0; font-size:18px}
+header h1{margin:0; font-size:18px; display:flex; justify-content:space-between; align-items:center}
+#online{font-size:11px; font-weight:600; color:var(--ok); background:rgba(55,214,122,.12); border:1px solid rgba(55,214,122,.4); border-radius:20px; padding:3px 10px; white-space:nowrap}
 header p{margin:2px 0 6px; font-size:12px; color:var(--mut)}
 .gsw{display:flex; gap:6px}
 .gsw button{flex:1; padding:8px 0; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--mut); font-size:13px; font-weight:700; cursor:pointer}
@@ -102,7 +103,7 @@ nav button.on{color:var(--acc)}
 </head>
 <body>
 <header>
-  <h1>🏐 Torneio de Vôlei</h1>
+  <h1>🏐 Torneio de Vôlei <span id="online">👥 …</span></h1>
   <p>Set único até 21 · sem vantagem · vitória = 3 pts · <span id="sync">⏳ conectando…</span></p>
   <div class="gsw">
     <button id="gw-m" onclick="setGen('m')">MASCULINO · Quadra 01</button>
@@ -379,6 +380,27 @@ function souMesario(){
   if (String(p) === String(CFG.pin)){ localStorage.setItem("volei_pin", String(p)); lockRender(); alert("Liberado! Este aparelho agora pode digitar."); }
   else alert("PIN incorreto.");
 }
+// ---------- presenca (quantos online) ----------
+let DEV = localStorage.getItem("volei_dev");
+if (!DEV){ DEV = "d" + Math.random().toString(36).slice(2, 10); localStorage.setItem("volei_dev", DEV); }
+let PRES = {};
+function renderOnline(){
+  const el = document.getElementById("online");
+  if (!el) return;
+  const ts = Object.values(PRES).filter(v => typeof v === "number");
+  if (!ts.length){ el.textContent = "👥 1 online"; return; }
+  const agora = Math.max.apply(null, ts);
+  const n = Object.values(PRES).filter(v => typeof v === "number" && v > agora - 60000).length;
+  el.textContent = "👥 " + Math.max(n, 1) + " online";
+}
+function heartbeat(){
+  fetch(DBROOT + "presenca/" + DEV + ".json", {method: "PUT", body: '{".sv":"timestamp"}'}).catch(() => {});
+}
+setInterval(heartbeat, 25000);
+setInterval(renderOnline, 30000);
+window.addEventListener("pagehide", () => {
+  try { fetch(DBROOT + "presenca/" + DEV + ".json", {method: "DELETE", keepalive: true}).catch(() => {}); } catch(e){}
+});
 const recentT = {};
 function applyTimes(k, val){
   if (recentT[k] && Date.now() - recentT[k] < 4000) return;
@@ -394,6 +416,14 @@ function routeRemote(path, data){
     applyRemote("/", data ? data.placares : null);
     const nt = (data && data.times) ? data.times : {};
     Object.keys(Object.assign({}, TIMES, nt)).forEach(k => applyTimes(k, nt[k]));
+    PRES = (data && data.presenca) ? data.presenca : {};
+    renderOnline();
+  }
+  else if (path === "/presenca"){ PRES = data || {}; renderOnline(); }
+  else if (path.indexOf("/presenca/") === 0){
+    const k = path.split("/")[2];
+    if (data === null) delete PRES[k]; else PRES[k] = data;
+    renderOnline();
   }
   else if (path === "/placares") applyRemote("/", data);
   else if (path.indexOf("/placares/") === 0) applyRemote(path.slice(9), data);
@@ -448,7 +478,7 @@ async function refreshFromCloud(){
     if (!es || es.readyState === 2) connect();
   } catch(e){ live = false; setSync("off"); }
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshFromCloud(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden){ refreshFromCloud(); heartbeat(); } });
 
 // ---------- placares ----------
 function sc(g){
@@ -913,9 +943,12 @@ renderAdmin();
     // a nuvem e a fonte da verdade; o aparelho e so cache para ver offline
     S = (d && d.placares) ? d.placares : {};
     TIMES = (d && d.times) ? d.times : {};
+    PRES = (d && d.presenca) ? d.presenca : {};
     save(); renderJogos(); renderTabela(); renderFinal(); renderTimes();
     setCfg(d ? d.config : null);
     renderAdmin();
+    heartbeat();
+    renderOnline();
     connect();
   } catch(e){ setSync("off"); renderAdmin(); }
 })();
