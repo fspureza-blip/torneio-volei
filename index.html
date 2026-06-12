@@ -18,6 +18,7 @@ body{margin:0; font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif; bac
 header{position:sticky; top:0; z-index:10; background:linear-gradient(135deg,#101c2e,#16365c); padding:12px 16px 10px; box-shadow:0 2px 12px rgba(0,0,0,.45)}
 header h1{margin:0; font-size:18px; display:flex; justify-content:space-between; align-items:center}
 #online{font-size:11px; font-weight:600; color:var(--ok); background:rgba(55,214,122,.12); border:1px solid rgba(55,214,122,.4); border-radius:20px; padding:3px 10px; white-space:nowrap; cursor:pointer}
+#clima{font-size:11px; font-weight:600; color:#9fc4ef; background:rgba(54,162,255,.12); border:1px solid rgba(54,162,255,.35); border-radius:20px; padding:3px 10px; white-space:nowrap}
 .onpanel{position:absolute; right:12px; top:54px; z-index:30; background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:10px 14px; box-shadow:0 8px 24px rgba(0,0,0,.5); min-width:200px; max-height:50vh; overflow-y:auto}
 .onpanel .ot{font-size:11px; color:var(--mut); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px}
 .onpanel ul{list-style:none; margin:0; padding:0}
@@ -110,7 +111,7 @@ nav button.on{color:var(--acc)}
 </head>
 <body>
 <header>
-  <h1>🏐 Torneio de Vôlei <span id="online" onclick="togglePainelOnline()">👥 …</span></h1>
+  <h1><span>🏐 Torneio de Vôlei</span><span style="display:flex; gap:6px; align-items:center"><span id="clima" style="display:none"></span><span id="online" onclick="togglePainelOnline()">👥 …</span></span></h1>
   <div id="onlist" class="onpanel" style="display:none"></div>
   <p>Set único até 21 · sem vantagem · vitória = 3 pts · <span id="sync">⏳ conectando…</span></p>
   <div class="gsw">
@@ -388,6 +389,33 @@ function souMesario(){
   if (String(p) === String(CFG.pin)){ localStorage.setItem("volei_pin", String(p)); lockRender(); alert("Liberado! Este aparelho agora pode digitar."); }
   else alert("PIN incorreto.");
 }
+// ---------- clima (Blumenau/SC, Open-Meteo) ----------
+function climaEmoji(code, dia){
+  if (code === 0) return dia ? "☀️" : "🌙";
+  if (code <= 2) return dia ? "🌤️" : "☁️";
+  if (code === 3) return "☁️";
+  if (code === 45 || code === 48) return "🌫️";
+  if (code >= 51 && code <= 57) return "🌦️";
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return "🌧️";
+  if (code >= 71 && code <= 77) return "🌨️";
+  if (code >= 95) return "⛈️";
+  return "🌡️";
+}
+async function clima(){
+  try {
+    const r = await fetch("https://api.open-meteo.com/v1/forecast?latitude=-26.92&longitude=-49.07&current=temperature_2m,weather_code,is_day&timezone=America%2FSao_Paulo");
+    const d = await r.json();
+    const c = d.current;
+    const el = document.getElementById("clima");
+    if (!el || !c) return;
+    el.textContent = climaEmoji(c.weather_code, c.is_day) + " " + Math.round(c.temperature_2m) + "°";
+    el.title = "Tempo agora em Blumenau/SC";
+    el.style.display = "";
+  } catch(e){}
+}
+clima();
+setInterval(clima, 30 * 60 * 1000);
+
 // ---------- presenca (quantos online) ----------
 let DEV = localStorage.getItem("volei_dev");
 if (!DEV){ DEV = "d" + Math.random().toString(36).slice(2, 10); localStorage.setItem("volei_dev", DEV); }
