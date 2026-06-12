@@ -18,7 +18,9 @@ body{margin:0; font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif; bac
 header{position:sticky; top:0; z-index:10; background:linear-gradient(135deg,#101c2e,#16365c); padding:12px 16px 10px; box-shadow:0 2px 12px rgba(0,0,0,.45)}
 header h1{margin:0; font-size:18px; display:flex; justify-content:space-between; align-items:center}
 #online{font-size:11px; font-weight:600; color:var(--ok); background:rgba(55,214,122,.12); border:1px solid rgba(55,214,122,.4); border-radius:20px; padding:3px 10px; white-space:nowrap; cursor:pointer}
-#clima{font-size:11px; font-weight:600; color:#9fc4ef; background:rgba(54,162,255,.12); border:1px solid rgba(54,162,255,.35); border-radius:20px; padding:3px 10px; white-space:nowrap}
+#clima{font-size:11px; font-weight:600; color:#9fc4ef; background:rgba(54,162,255,.12); border:1px solid rgba(54,162,255,.35); border-radius:20px; padding:3px 10px; white-space:nowrap; cursor:pointer}
+.onpanel li.cl{display:flex; justify-content:space-between; gap:10px; font-variant-numeric:tabular-nums}
+.onpanel li.cl .chuva{color:#9fc4ef; font-size:11px}
 .onpanel{position:absolute; right:12px; top:54px; z-index:30; background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:10px 14px; box-shadow:0 8px 24px rgba(0,0,0,.5); min-width:200px; max-height:50vh; overflow-y:auto}
 .onpanel .ot{font-size:11px; color:var(--mut); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px}
 .onpanel ul{list-style:none; margin:0; padding:0}
@@ -111,8 +113,9 @@ nav button.on{color:var(--acc)}
 </head>
 <body>
 <header>
-  <h1><span>🏐 Torneio de Vôlei</span><span style="display:flex; gap:6px; align-items:center"><span id="clima" style="display:none"></span><span id="online" onclick="togglePainelOnline()">👥 …</span></span></h1>
+  <h1><span>🏐 Torneio de Vôlei</span><span style="display:flex; gap:6px; align-items:center"><span id="clima" style="display:none" onclick="togglePainelClima()"></span><span id="online" onclick="togglePainelOnline()">👥 …</span></span></h1>
   <div id="onlist" class="onpanel" style="display:none"></div>
+  <div id="climalist" class="onpanel" style="display:none"></div>
   <p>Set único até 21 · sem vantagem · vitória = 3 pts · <span id="sync">⏳ conectando…</span></p>
   <div class="gsw">
     <button id="gw-m" onclick="setGen('m')">MASCULINO · Quadra 01</button>
@@ -415,6 +418,47 @@ async function clima(){
 }
 clima();
 setInterval(clima, 30 * 60 * 1000);
+function proximoSabado(){
+  const d = new Date();
+  for (let i = 0; i < 7; i++){
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i);
+    if (x.getDay() === 6) return x;
+  }
+}
+async function renderPainelClima(){
+  const painel = document.getElementById("climalist");
+  if (!painel) return;
+  painel.innerHTML = `<div class="ot">Carregando previsão…</div>`;
+  try {
+    const r = await fetch("https://api.open-meteo.com/v1/forecast?latitude=-26.92&longitude=-49.07&hourly=temperature_2m,weather_code,precipitation_probability,is_day&timezone=America%2FSao_Paulo&forecast_days=7");
+    const d = await r.json();
+    const sab = proximoSabado();
+    const iso = sab.getFullYear() + "-" + String(sab.getMonth()+1).padStart(2,"0") + "-" + String(sab.getDate()).padStart(2,"0");
+    const linhas = [];
+    d.hourly.time.forEach((t, i) => {
+      if (t.indexOf(iso) !== 0) return;
+      const hora = parseInt(t.slice(11, 13));
+      if (hora < 7 || hora > 21) return;
+      const emoji = climaEmoji(d.hourly.weather_code[i], d.hourly.is_day[i]);
+      const temp = Math.round(d.hourly.temperature_2m[i]);
+      const chuva = d.hourly.precipitation_probability[i];
+      linhas.push(`<li class="cl"><span>${String(hora).padStart(2,"0")}h ${emoji} <b>${temp}°</b></span><span class="chuva">💧 ${chuva}%</span></li>`);
+    });
+    const titulo = "Sábado " + String(sab.getDate()).padStart(2,"0") + "/" + String(sab.getMonth()+1).padStart(2,"0") + " — Blumenau/SC";
+    painel.innerHTML = linhas.length
+      ? `<div class="ot">${titulo}</div><ul>${linhas.join("")}</ul><div class="cnt" style="margin-top:6px">💧 = chance de chuva (Open-Meteo)</div>`
+      : `<div class="ot">${titulo}</div><div class="cnt">Previsão ainda não disponível para esse dia.</div>`;
+  } catch(e){
+    painel.innerHTML = `<div class="ot">Sem conexão</div><div class="cnt">Não foi possível carregar a previsão.</div>`;
+  }
+}
+function togglePainelClima(){
+  const painel = document.getElementById("climalist");
+  const outro = document.getElementById("onlist");
+  if (outro) outro.style.display = "none";
+  if (painel.style.display === "none"){ painel.style.display = "block"; renderPainelClima(); }
+  else painel.style.display = "none";
+}
 
 // ---------- presenca (quantos online) ----------
 let DEV = localStorage.getItem("volei_dev");
@@ -465,8 +509,10 @@ function heartbeat(){
   fetch(DBROOT + "presenca/" + DEV + ".json", {method: "PUT", body: JSON.stringify({t: {".sv": "timestamp"}, n: nome})}).catch(() => {});
 }
 document.addEventListener("click", e => {
-  const painel = document.getElementById("onlist");
-  if (painel && painel.style.display !== "none" && !painel.contains(e.target) && e.target.id !== "online") painel.style.display = "none";
+  [["onlist","online"],["climalist","clima"]].forEach(([pid, bid]) => {
+    const painel = document.getElementById(pid);
+    if (painel && painel.style.display !== "none" && !painel.contains(e.target) && e.target.id !== bid) painel.style.display = "none";
+  });
 });
 setInterval(heartbeat, 25000);
 setInterval(renderOnline, 30000);
